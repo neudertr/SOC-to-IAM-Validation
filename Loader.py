@@ -8,14 +8,30 @@ PERMISSIONS_CSV_PATH = "Permissions.csv"
 STIX_PATH = "stix_data.json"
 OUTPUT_REPORT_PATH = "modification_report.txt"
 
+field_names = [
+    "cpe_prefix",
+    "cpe_version",
+    "part",
+    "vendor",
+    "product",
+    "version",
+    "update",
+    "edition",
+    "language",
+    "sw_edition",
+    "target_sw",
+    "target_hw",
+    "other",
+]
 
 
-#Read CSV and detect available columns dynamically
+
+
 def read_csv(file_path: str) -> pd.DataFrame:
     df = pd.read_csv(file_path, sep=None, engine='python')
     return df
 
-#Save modified IAM data to CSV
+
 def save_csv(df: pd.DataFrame, output_path: str):
     df.to_csv(output_path, sep=';', index=False)
 
@@ -27,44 +43,86 @@ def write_report(report_lines: list, output_path: str):
     with open(output_path, "w", encoding="utf-8") as report_file:
         report_file.writelines(line + "\n" for line in report_lines)
 
+def split_cpe(cpe_string: str):
+    """
+    cpe:<cpe_version>:<part>:<vendor>:<product>:<version>:<update>:<edition>:<language>:<sw_edition>:<target_sw>:<target_hw>:<other>
+    """
+    parts = cpe_string.split(":")
+
+    parsed = {}
+    for i, name in enumerate(field_names):
+        parsed[name] = parts[i] if i < len(parts) else None
+
+    print("Parsed fields of CPE:")
+    for name in field_names:
+        print(f"  {name}: {parsed.get(name)}")
+
+    return parsed
 
 
 
 #Check if a STIX object references any attribute values in the dataframe
 def match_stix_to_dataframe(df: pd.DataFrame, stix_data: dict, entity_type: str):
-    #list to store lines for report
     report = []
-    
-    #Iterate over all STIX attributes
-    for key, value in stix_data.items():
 
-        #TODO Expand matching logic,
-        
-        #Check if the value exists in any of the iam data columns
-        matches = df.isin([value]).any(axis=1)
+    technique = stix_data.get("technique", "")
+    description = stix_data.get("description", "")
+    cpe_value = stix_data.get("cpe", "")
+
+
+    cpe_parts = split_cpe(cpe_value)
+
+
+    stix_values = []
+    if technique:
+        stix_values.append(technique)
+
+    if description:
+        stix_values.append(description)
+
+    if cpe_parts:
+        stix_values.extend(cpe_parts)
+
+    #Add Temporal_Criticality column if missing
+    if "Temporal_Criticality" not in df.columns:
+        df["Temporal_Criticality"] = ""
+    if "Deactivated" not in df.columns:
+        df["Deactivated"] = ""
+
+
+    # Iterate over extracted STIX values
+    for val in stix_values:
+        #TODO Expand matching logic
+        matches = df.isin([val]).any(axis=1)
+
         if matches.any():
-            #Add Temporal_Criticality column if missing
-            if "Temporal_Criticality" not in df.columns:
-                df["Temporal_Criticality"] = ""
-            
 
-            #TODO write more evaluation, Mark matched rows with HIGH
-            df.loc[matches, "Temporal_Criticality"] = "HIGH"
-            
+            applyRules(df, matches, technique, description, cpe_parts)
 
-
-            #Add information to report
             affected_rows = df.loc[matches]
             for _, row in affected_rows.iterrows():
                 report.append(
-                    f"[{entity_type.upper()}] Match found for STIX attribute '{key}' = '{value}' "
+                    f"[{entity_type.upper()}] Match found for '{val}' "
                     f"-> ID {row.get('ID', 'N/A')}, marked as HIGH."
                 )
 
-
     return df, report
 
-def applyRules():
+def applyRules(df, matches, technique, description, cpe_parts):
+
+    # Permission rules
+    if entity_type == "permission":
+        # Mark matched rows with HIGH
+        df.loc[matches, "Temporal_Criticality"] = "HIGH"
+
+    # Account rules
+    if entity_type == "account":
+        # Mark account as deactivated
+        df.loc[matches, "Deactivated"] = "true"
+
+    # TODO: add more rule logic here
+
+
 
 def startLoader():
     #Step 1: Read CSV files  
