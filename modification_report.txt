@@ -1,0 +1,5 @@
+STIX-based CSV modification report
+[PERMISSION] Match found for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1003, Temporal_Criticality=VERY_HIGH, Deactivated=
+[PERMISSION] Match found for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1004, Temporal_Criticality=HIGH, Deactivated=
+[PERMISSION] Match found for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1013, Temporal_Criticality=HIGH, Deactivated=
+[PERMISSION] Match found for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1014, Temporal_Criticality=VERY_HIGH, Deactivated=

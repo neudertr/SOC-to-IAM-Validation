@@ -3,10 +3,13 @@ import json
 import os
 
 #Define input and output file paths
-ACCOUNTS_CSV_PATH = "Accounts.csv"
-PERMISSIONS_CSV_PATH = "Permissions.csv"
-STIX_PATH = "stix_data.json"
-OUTPUT_REPORT_PATH = "modification_report.txt"
+ACCOUNTS_CSV_PATH = "C:/Users/rNeudert/CTI_Implement/Git/Accounts.CSV"
+PERMISSIONS_CSV_PATH = "C:/Users/rNeudert/CTI_Implement/Git/Permissions.csv"
+STIX_PATH = "C:/Users/rNeudert/CTI_Implement/Git/Test_STIX.json"
+OUTPUT_REPORT_PATH = "C:/Users/rNeudert/CTI_Implement/Git/modification_report.txt"
+
+ACCOUNTS_MODIFIED_PATH = "C:/Users/rNeudert/CTI_Implement/Git/accounts_modified.csv"
+PERMISSIONS_MODIFIED_PATH = "C:/Users/rNeudert/CTI_Implement/Git/permissions_modified.csv"
 
 field_names = [
     "cpe_prefix",
@@ -65,6 +68,7 @@ def split_cpe(cpe_string: str):
 def match_stix_to_dataframe(df: pd.DataFrame, stix_data: dict, entity_type: str):
     report = []
 
+    id = stix_data.get("id", "")
     technique = stix_data.get("technique", "")
     description = stix_data.get("description", "")
     cpe_value = stix_data.get("cpe", "")
@@ -83,6 +87,9 @@ def match_stix_to_dataframe(df: pd.DataFrame, stix_data: dict, entity_type: str)
     if cpe_parts:
         stix_values.extend(cpe_parts)
 
+    if cpe_value:
+        stix_values.extend(cpe_value)
+
     #Add Temporal_Criticality column if missing
     if "Temporal_Criticality" not in df.columns:
         df["Temporal_Criticality"] = ""
@@ -90,37 +97,74 @@ def match_stix_to_dataframe(df: pd.DataFrame, stix_data: dict, entity_type: str)
         df["Deactivated"] = ""
 
 
+    print("Ready to match")
     # Iterate over extracted STIX values
-    for val in stix_values:
-        #TODO Expand matching logic
-        matches = df.isin([val]).any(axis=1)
+    #TODO Expand matching logic
+    matches = df.isin([cpe_value]).any(axis=1)
+    if matches.any():
 
-        if matches.any():
+        # Get indices of matched rows
+        matched_indices = df.index[matches]
 
-            applyRules(df, matches, technique, description, cpe_parts)
+        # For each matched row, call applyRules on the single-row Series and write it back
+        for idx in matched_indices:
+            # Get a copy of the row to avoid chained-assignment issues
+            row = df.loc[idx].copy()
 
-            affected_rows = df.loc[matches]
-            for _, row in affected_rows.iterrows():
-                report.append(
-                    f"[{entity_type.upper()}] Match found for '{val}' "
-                    f"-> ID {row.get('ID', 'N/A')}, marked as HIGH."
-                )
+            # Call per-row rule engine; applyRules returns the modified row
+            updated_row = applyRules(row, technique, description, cpe_parts, entity_type)
+
+            # Write the updated row back into the DataFrame at the original index
+            df.loc[idx] = updated_row
+
+            # Add information to report using the updated DataFrame values
+            report.append(
+                f"[{entity_type.upper()}] Match found for '{cpe_value}' -> ID {df.loc[idx].get('ID', 'N/A')}, "
+                f"Temporal_Criticality={df.loc[idx].get('Temporal_Criticality', '')}, "
+                f"Deactivated={df.loc[idx].get('Deactivated', '')}"
+            )
 
     return df, report
 
-def applyRules(df, matches, technique, description, cpe_parts):
+# Apply rules to a single DataFrame row (pandas.Series) and return the modified row.
+def applyRules(row, technique, description, cpe_parts, entity_type):
+    # Ensure columns exist on the row object (these will be added to the DataFrame when assigned back).
+    if "Temporal_Criticality" not in row.index:
+        # Add Temporal_Criticality placeholder
+        row["Temporal_Criticality"] = ""
+    if "Deactivated" not in row.index:
+        # Add Deactivated placeholder
+        row["Deactivated"] = ""
 
-    # Permission rules
+    # Permission rules: use Criticality column value to decide new Temporal_Criticality
     if entity_type == "permission":
-        # Mark matched rows with HIGH
-        df.loc[matches, "Temporal_Criticality"] = "HIGH"
+        # Read existing criticality value (empty string if missing)
+        criticality = row.get("Criticality", "")
 
-    # Account rules
+        # If criticality is MEDIUM, escalate to HIGH
+        if isinstance(criticality, str) and criticality.upper() == "MEDIUM":
+            row["Temporal_Criticality"] = "HIGH"
+
+        # If criticality is HIGH, escalate to VERY_HIGH
+        elif isinstance(criticality, str) and criticality.upper() == "HIGH":
+            row["Temporal_Criticality"] = "VERY_HIGH"
+
+        # TODO: add more fine-grained permission rules (e.g., consider technique/description/cpe_parts)
+
+    # Account rules: mark account as deactivated
     if entity_type == "account":
-        # Mark account as deactivated
-        df.loc[matches, "Deactivated"] = "true"
+        # Mark the account as deactivated
+        row["Deactivated"] = "true"
 
-    # TODO: add more rule logic here
+        # TODO: use technique/description/cpe_parts to refine decision (e.g., only deactivate if cpe matches)
+
+    # Optionally store triggering context for auditing (uncomment if desired)
+    # row["Triggered_Technique"] = technique
+    # row["Triggered_Description"] = description
+    # row["Triggered_CPE"] = ",".join(cpe_parts) if cpe_parts else ""
+
+    # Return the modified row so caller can write it back into the DataFrame
+    return row
 
 
 
@@ -142,24 +186,22 @@ def startLoader():
 
     #TODO Expand logic 
     all_reports = []
-    for obj in stix_data.get("objects", []):
-        obj_type = obj.get("type", "unknown")
-        print(f"Processing STIX object of type: {obj_type}")
+    #Try to match object attributes against both CSVs
+    permissions_df, perm_report = match_stix_to_dataframe(permissions_df, stix_data, "permission")
+    accounts_df, acc_report = match_stix_to_dataframe(accounts_df, stix_data, "account")
+    
+    #Collect reports
+    all_reports.extend(perm_report)
+    all_reports.extend(acc_report)
         
-        #Try to match object attributes against both CSVs
-        permissions_df, perm_report = match_stix_to_dataframe(permissions_df, obj, "permission")
-        accounts_df, acc_report = match_stix_to_dataframe(accounts_df, obj, "account")
-        
-        #Collect reports
-        all_reports.extend(perm_report)
-        all_reports.extend(acc_report)
+
 
     #Step 5: Save CSV files  
     #save_csv(accounts_df, "accounts.csv")
     #save_csv(permissions_df, "permissions.csv")
     #Aktuell Test mit modifizierten files
-    save_csv(accounts_df, "accounts_modified.csv")
-    save_csv(permissions_df, "permissions_modified.csv")
+    save_csv(accounts_df, ACCOUNTS_MODIFIED_PATH)
+    save_csv(permissions_df, PERMISSIONS_MODIFIED_PATH)
 
 
 
