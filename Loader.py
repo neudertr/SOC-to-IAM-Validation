@@ -11,6 +11,8 @@ OUTPUT_REPORT_PATH = "C:/Users/rNeudert/CTI_Implement/Git/modification_report.tx
 ACCOUNTS_MODIFIED_PATH = "C:/Users/rNeudert/CTI_Implement/Git/accounts_modified.csv"
 PERMISSIONS_MODIFIED_PATH = "C:/Users/rNeudert/CTI_Implement/Git/permissions_modified.csv"
 
+CPE_COLUMN_NAME = "Software_System"
+
 field_names = [
     "cpe_prefix",
     "cpe_version",
@@ -40,7 +42,7 @@ def save_csv(df: pd.DataFrame, output_path: str):
 
 
 
-#Write text report TODO enhance with more info
+#Write text report
 def write_report(report_lines: list, output_path: str):
     #Write all lines into a text file
     with open(output_path, "w", encoding="utf-8") as report_file:
@@ -56,11 +58,98 @@ def split_cpe(cpe_string: str):
     for i, name in enumerate(field_names):
         parsed[name] = parts[i] if i < len(parts) else None
 
-    print("Parsed fields of CPE:")
     for name in field_names:
         print(f"  {name}: {parsed.get(name)}")
 
     return parsed
+
+# Compare two parsed CPE dictionaries field-by-field (explicit checks, no loop).
+# Returns a tuple: (bool_match_found, list_of_matched_field_names)
+def compare_cpe_parts(remote_cpe: dict, local_cpe: dict):
+    matched_fields = []
+
+    # Compare vendor fields
+    # If both sides have a vendor and they match (case-insensitive), record match
+    if remote_cpe.get("vendor") and local_cpe.get("vendor"):
+        if str(remote_cpe.get("vendor")).strip().lower() == str(local_cpe.get("vendor")).strip().lower():
+            matched_fields.append("vendor")
+
+    # Compare product fields
+    # If both sides have a product and they match (case-insensitive), record match
+    if remote_cpe.get("product") and local_cpe.get("product"):
+        if str(remote_cpe.get("product")).strip().lower() == str(local_cpe.get("product")).strip().lower():
+            matched_fields.append("product")
+
+    # Compare version fields
+    if remote_cpe.get("version") and local_cpe.get("version"):
+        if str(remote_cpe.get("version")).strip().lower() == str(local_cpe.get("version")).strip().lower():
+            matched_fields.append("version")
+
+    # Compare update fields
+    if remote_cpe.get("update") and local_cpe.get("update"):
+        if str(remote_cpe.get("update")).strip().lower() == str(local_cpe.get("update")).strip().lower():
+            matched_fields.append("update")
+
+    # Compare edition fields
+    if remote_cpe.get("edition") and local_cpe.get("edition"):
+        if str(remote_cpe.get("edition")).strip().lower() == str(local_cpe.get("edition")).strip().lower():
+            matched_fields.append("edition")
+
+    # Compare language fields
+    if remote_cpe.get("language") and local_cpe.get("language"):
+        if str(remote_cpe.get("language")).strip().lower() == str(local_cpe.get("language")).strip().lower():
+            matched_fields.append("language")
+
+    # Compare sw_edition fields
+    if remote_cpe.get("sw_edition") and local_cpe.get("sw_edition"):
+        if str(remote_cpe.get("sw_edition")).strip().lower() == str(local_cpe.get("sw_edition")).strip().lower():
+            matched_fields.append("sw_edition")
+
+    # Compare target_sw fields
+    if remote_cpe.get("target_sw") and local_cpe.get("target_sw"):
+        if str(remote_cpe.get("target_sw")).strip().lower() == str(local_cpe.get("target_sw")).strip().lower():
+            matched_fields.append("target_sw")
+
+    # Compare target_hw fields
+    if remote_cpe.get("target_hw") and local_cpe.get("target_hw"):
+        if str(remote_cpe.get("target_hw")).strip().lower() == str(local_cpe.get("target_hw")).strip().lower():
+            matched_fields.append("target_hw")
+
+    # Compare other fields
+    if remote_cpe.get("other") and local_cpe.get("other"):
+        if str(remote_cpe.get("other")).strip().lower() == str(local_cpe.get("other")).strip().lower():
+            matched_fields.append("other")
+
+    # Return boolean (any match) and the list of matched field names
+    return (len(matched_fields) > 0, matched_fields)
+
+
+
+# Check whether a DataFrame row matches the provided value or CPE components.
+# Uses explicit field-by-field CPE comparison via compare_cpe_parts().
+def row_matches(row, value, cpe_parts):
+    # 1) Basic column-by-column equality checks (unchanged)
+    for col in row.index:
+        cell = row[col]
+        if cell == value:
+            return True, []  # match found, no CPE fields to report
+        if isinstance(cell, (str, int, float)) and str(cell).strip().lower() == str(value).strip().lower():
+            return True, []
+
+    # 2) If remote CPE dict provided and row has CPE_original, parse and compare field-by-field
+    if CPE_COLUMN_NAME in row and isinstance(row[CPE_COLUMN_NAME], str):
+        # Parse the row-level CPE into a dict using the provided split_cpe function
+        local_cpe_dict = split_cpe(row[CPE_COLUMN_NAME])
+
+        # Perform explicit field-by-field comparisons (vendor vs vendor, product vs product, ...)
+        matched, matched_fields = compare_cpe_parts(cpe_parts, local_cpe_dict)
+
+        # If any field matched, return True and the matched fields
+        if matched:
+            return True, matched_fields
+
+    # No match found
+    return False, []
 
 
 
@@ -74,21 +163,8 @@ def match_stix_to_dataframe(df: pd.DataFrame, stix_data: dict, entity_type: str)
     cpe_value = stix_data.get("cpe", "")
 
 
+    #This is a map accessed by get(field_name)
     cpe_parts = split_cpe(cpe_value)
-
-
-    stix_values = []
-    if technique:
-        stix_values.append(technique)
-
-    if description:
-        stix_values.append(description)
-
-    if cpe_parts:
-        stix_values.extend(cpe_parts)
-
-    if cpe_value:
-        stix_values.extend(cpe_value)
 
     #Add Temporal_Criticality column if missing
     if "Temporal_Criticality" not in df.columns:
@@ -97,34 +173,31 @@ def match_stix_to_dataframe(df: pd.DataFrame, stix_data: dict, entity_type: str)
         df["Deactivated"] = ""
 
 
-    print("Ready to match")
-    # Iterate over extracted STIX values
-    #TODO Expand matching logic
-    matches = df.isin([cpe_value]).any(axis=1)
-    if matches.any():
-
-        # Get indices of matched rows
-        matched_indices = df.index[matches]
-
-        # For each matched row, call applyRules on the single-row Series and write it back
-        for idx in matched_indices:
-            # Get a copy of the row to avoid chained-assignment issues
-            row = df.loc[idx].copy()
-
-            # Call per-row rule engine; applyRules returns the modified row
+    # Iterate through each row
+    for idx, row in df.iterrows():
+        matched, matched_fields = row_matches(row, cpe_value, cpe_parts)
+        if matched:
+            # Apply per-row rules
             updated_row = applyRules(row, technique, description, cpe_parts, entity_type)
 
-            # Write the updated row back into the DataFrame at the original index
+            # Write modifications back to DataFrame
             df.loc[idx] = updated_row
 
-            # Add information to report using the updated DataFrame values
-            report.append(
-                f"[{entity_type.upper()}] Match found for '{cpe_value}' -> ID {df.loc[idx].get('ID', 'N/A')}, "
-                f"Temporal_Criticality={df.loc[idx].get('Temporal_Criticality', '')}, "
-                f"Deactivated={df.loc[idx].get('Deactivated', '')}"
-            )
+            # Add to report and include which CPE fields matched (if any)
+            if matched_fields:
+                report.append(
+                    f"[{entity_type.upper()}] CPE field match for '{cpe_value}' -> ID {updated_row.get('ID', 'N/A')}, "
+                    f"matched_fields={matched_fields}, Temporal_Criticality={updated_row.get('Temporal_Criticality','')}, "
+                    f"Deactivated={updated_row.get('Deactivated','')}"
+                )
+            else:
+                report.append(
+                    f"[{entity_type.upper()}] Value match for '{cpe_value}' -> ID {updated_row.get('ID', 'N/A')}, "
+                    f"Temporal_Criticality={updated_row.get('Temporal_Criticality','')}, Deactivated={updated_row.get('Deactivated','')}"
+                )
 
     return df, report
+
 
 # Apply rules to a single DataFrame row (pandas.Series) and return the modified row.
 def applyRules(row, technique, description, cpe_parts, entity_type):
