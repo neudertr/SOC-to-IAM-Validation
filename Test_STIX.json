@@ -1,0 +1,21 @@
+{
+  "id": "7d1b8e1f-6d4d-4c23-b895-d5f88a0e4d75",
+  "technique": "T1136 - Create Account",
+  "description": {
+    "type": "attack-pattern",
+    "spec_version": "2.1",
+    "id": "attack-pattern--4c0b05e5-e647-4e0a-a217-4e3a32956550",
+    "created": "2023-08-17T12:30:00.000Z",
+    "modified": "2024-02-09T09:15:00.000Z",
+    "name": "Create Account",
+    "description": "Adversaries may create new local or domain accounts to maintain persistence or obtain elevated privileges on a compromised system. Newly created accounts may be added to privileged groups or used interactively for further lateral movement. This technique corresponds to MITRE ATT&CK technique T1136 (Create Account).",
+    "external_references": [
+      {
+        "source_name": "mitre-attack",
+        "url": "https://attack.mitre.org/techniques/T1136/",
+        "external_id": "T1136"
+      }
+    ]
+  },
+  "cpe": "cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*"
+}

@@ -1,0 +1,15 @@
+STIX-based CSV modification report
+[PERMISSION] Value match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1003, Temporal_Criticality=VERY_HIGH, Deactivated=
+[PERMISSION] Value match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1004, Temporal_Criticality=HIGH, Deactivated=
+[PERMISSION] CPE field match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1005, matched_fields=['update', 'edition', 'language', 'sw_edition', 'target_sw', 'target_hw', 'other'], Temporal_Criticality=HIGH, Deactivated=
+[PERMISSION] CPE field match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1006, matched_fields=['update', 'edition', 'language', 'sw_edition', 'target_sw', 'target_hw', 'other'], Temporal_Criticality=HIGH, Deactivated=
+[PERMISSION] CPE field match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1007, matched_fields=['update', 'edition', 'language', 'sw_edition', 'target_sw', 'target_hw', 'other'], Temporal_Criticality=HIGH, Deactivated=
+[PERMISSION] CPE field match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1008, matched_fields=['update', 'edition', 'language', 'sw_edition', 'target_sw', 'target_hw', 'other'], Temporal_Criticality=VERY_HIGH, Deactivated=
+[PERMISSION] CPE field match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1009, matched_fields=['update', 'edition', 'language', 'sw_edition', 'target_sw', 'target_hw', 'other'], Temporal_Criticality=VERY_HIGH, Deactivated=
+[PERMISSION] CPE field match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1010, matched_fields=['update', 'edition', 'language', 'sw_edition', 'target_sw', 'target_hw', 'other'], Temporal_Criticality=VERY_HIGH, Deactivated=
+[PERMISSION] CPE field match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1011, matched_fields=['update', 'edition', 'language', 'sw_edition', 'target_sw', 'target_hw', 'other'], Temporal_Criticality=, Deactivated=
+[PERMISSION] CPE field match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1012, matched_fields=['vendor', 'update', 'edition', 'language', 'sw_edition', 'target_sw', 'target_hw', 'other'], Temporal_Criticality=, Deactivated=
+[PERMISSION] Value match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1013, Temporal_Criticality=HIGH, Deactivated=
+[PERMISSION] Value match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1014, Temporal_Criticality=VERY_HIGH, Deactivated=
+[PERMISSION] CPE field match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1016, matched_fields=['update', 'edition', 'language', 'sw_edition', 'target_sw', 'target_hw', 'other'], Temporal_Criticality=VERY_HIGH, Deactivated=
+[PERMISSION] CPE field match for 'cpe:2.3:o:microsoft:windows_server:2022:*:*:*:*:*:*:*' -> ID 1017, matched_fields=['update', 'edition', 'language', 'sw_edition', 'target_sw', 'target_hw', 'other'], Temporal_Criticality=VERY_HIGH, Deactivated=
