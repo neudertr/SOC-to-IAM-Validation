@@ -114,7 +114,7 @@ else:
                 match, score = find_best_match(comp.get("vendor"), comp.get("product"))
                 if match is not None:
                     comp["cpe23"] = match[cpe_col]
-                    comp["match_score"] = float(score)
+                    comp["match_score"] = min(float(score), 1.0)
                 else:
                     comp["cpe23"] = "NOT_FOUND"
                     comp["match_score"] = 0.0
