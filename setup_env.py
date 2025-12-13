@@ -253,6 +253,7 @@ log("🎉 SYSTEM READY.")
 log("FINAL +1 : Fetching Loader Logic...")
 
 scripts = ["Loader.py", "orchestrator_stix.py"]
+files = ["Accounts.CSV", "Permissions.CSV"]
 
 for script in scripts:
     if not os.path.exists(script):
@@ -260,5 +261,11 @@ for script in scripts:
         subprocess.run(f"wget -q -O {script} {url}", shell=True)
     else:
         print(f"   ✅ {script} present.")
+for file in files:
+    if not os.path.exists(file):
+        url = f"{BASE_URL}{file}"
+        subprocess.run(f"wget -q -O {file} {url}", shell=True)
+    else:
+        print(f"   ✅ {file} present.")
 
 log("🎉 Loader READY. PROCEED TO NEXT CELL.")
