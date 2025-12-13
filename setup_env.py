@@ -122,27 +122,31 @@ except Exception as e:
 # ==========================================
 log("STEP 4/5: Loading RAG Knowledge Base...")
 
-# Smart Path Detection: Check Input first, then download if missing
-possible_paths = [
-    "/kaggle/input/artifacts-phase1", # Standard Input
-    "/kaggle/working/artifacts-phase1" # Downloaded
-]
+rag_files = ["cpe_meta.parquet", "cpe_tfidf.npz", "vectorizer.pkl"]
+rag_path = os.getcwd() # Save to current working directory
 
-rag_path = None
-for p in possible_paths:
-    if os.path.exists(p):
-        rag_path = p
-        break
+print(f"   ⬇️  Fetching RAG artifacts from GitHub ({REPO})...")
 
-if not rag_path:
-    print("   ⬇️  Artifacts not found locally. Downloading via KaggleHub...")
-    # Replace with your actual dataset for the parquet/pkl files
-    rag_path = kagglehub.dataset_download('mathismller/artifacts-phase1')
+for file_name in rag_files:
+    # Only download if not already present (speeds up re-runs)
+    if not os.path.exists(file_name):
+        url = f"{BASE_URL}{file_name}"
+        print(f"      Downloading {file_name}...", end=" ")
+        try:
+            # -q = quiet, -O = output filename
+            subprocess.check_call(f"wget -q -O {file_name} {url}", shell=True)
+            print("✅")
+        except subprocess.CalledProcessError:
+            print("❌ Failed.")
+            print(f"      ⚠️ Critical: Could not download {file_name}. Check if it exists in the repo root.")
+            raise Exception(f"Download failed for {file_name}")
+    else:
+        print(f"      ✅ {file_name} already present.")
 
 print(f"   📂 Reading RAG data from: {rag_path}")
 
 try:
-    # Adjust filenames if they differ in your dataset
+    # Load directly from current directory
     df_meta = pd.read_parquet(os.path.join(rag_path, "cpe_meta.parquet"))
     tfidf_matrix = scipy.sparse.load_npz(os.path.join(rag_path, "cpe_tfidf.npz"))
     with open(os.path.join(rag_path, "vectorizer.pkl"), "rb") as f:
@@ -150,6 +154,8 @@ try:
     print("   ✅ RAG Database loaded.")
 except Exception as e:
     print(f"   ❌ Error loading RAG artifacts: {e}")
+    print("      (Hint: If you get 'UnpicklingError' or 'Parquet error', your file on GitHub might be an LFS pointer!)")
+    raise e
 
 # ==========================================
 # 5. LOAD TEXT2TECHN (SBERT & MITRE)
