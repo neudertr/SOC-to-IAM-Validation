@@ -1,294 +1,246 @@
 import pandas as pd
 import json
 import os
+import glob
 
-#Define input and output file paths
-ACCOUNTS_CSV_PATH = "C:/Users/rNeudert/CTI_Implement/Git/Accounts.CSV"
-PERMISSIONS_CSV_PATH = "C:/Users/rNeudert/CTI_Implement/Git/Permissions.csv"
-STIX_PATH = "C:/Users/rNeudert/CTI_Implement/Git/Test_STIX.json"
-OUTPUT_REPORT_PATH = "C:/Users/rNeudert/CTI_Implement/Git/modification_report.txt"
+# ==========================================
+# 1. KONFIGURATION & PFADE
+# ==========================================
+# In Kaggle liegen die vom Setup geladenen Files meist direkt im Working Dir.
+WORKING_DIR = os.getcwd()
 
-ACCOUNTS_MODIFIED_PATH = "C:/Users/rNeudert/CTI_Implement/Git/accounts_modified.csv"
-PERMISSIONS_MODIFIED_PATH = "C:/Users/rNeudert/CTI_Implement/Git/permissions_modified.csv"
+# Input Dateien (werden vom Setup hierher geladen)
+ACCOUNTS_CSV_PATH = os.path.join(WORKING_DIR, "Accounts.CSV")
+PERMISSIONS_CSV_PATH = os.path.join(WORKING_DIR, "Permissions.CSV")
+STIX_PATH = os.path.join(WORKING_DIR, "Test_STIX.json")
+
+# Output Dateien
+OUTPUT_REPORT_PATH = os.path.join(WORKING_DIR, "modification_report.txt")
+ACCOUNTS_MODIFIED_PATH = os.path.join(WORKING_DIR, "accounts_modified.csv")
+PERMISSIONS_MODIFIED_PATH = os.path.join(WORKING_DIR, "permissions_modified.csv")
 
 CPE_COLUMN_NAME = "Software_System"
 
 field_names = [
-    "cpe_prefix",
-    "cpe_version",
-    "part",
-    "vendor",
-    "product",
-    "version",
-    "update",
-    "edition",
-    "language",
-    "sw_edition",
-    "target_sw",
-    "target_hw",
-    "other",
+    "cpe_prefix", "cpe_version", "part", "vendor", "product", "version", 
+    "update", "edition", "language", "sw_edition", "target_sw", "target_hw", "other"
 ]
 
-
-
+# ==========================================
+# 2. HELPER FUNCTIONS
+# ==========================================
 
 def read_csv(file_path: str) -> pd.DataFrame:
-    df = pd.read_csv(file_path, sep=None, engine='python')
-    return df
-
+    # Robustes Lesen: Versucht verschiedene Trennzeichen, falls das CSV "böse" ist
+    try:
+        return pd.read_csv(file_path, sep=';', engine='python') # Dein Default
+    except:
+        return pd.read_csv(file_path, sep=',', engine='python') # Fallback
 
 def save_csv(df: pd.DataFrame, output_path: str):
     df.to_csv(output_path, sep=';', index=False)
 
-
-
-#Write text report
 def write_report(report_lines: list, output_path: str):
-    #Write all lines into a text file
     with open(output_path, "w", encoding="utf-8") as report_file:
         report_file.writelines(line + "\n" for line in report_lines)
 
 def split_cpe(cpe_string: str):
     """
-    cpe:<cpe_version>:<part>:<vendor>:<product>:<version>:<update>:<edition>:<language>:<sw_edition>:<target_sw>:<target_hw>:<other>
+    Zerlegt einen CPE 2.3 String in ein Dictionary.
+    Erwartet Format: cpe:2.3:part:vendor:product:version:update:edition:...
     """
+    if not cpe_string.startswith("cpe:2.3"):
+        return {} # Kein valider CPE 2.3
+        
     parts = cpe_string.split(":")
-
+    # Wir schneiden 'cpe' und '2.3' (die ersten 2) ab für das Mapping auf field_names
+    # field_names beginnt mit 'cpe_prefix' (cpe) und 'cpe_version' (2.3)
+    
     parsed = {}
     for i, name in enumerate(field_names):
-        parsed[name] = parts[i] if i < len(parts) else None
-
-    for name in field_names:
-        print(f"  {name}: {parsed.get(name)}")
-
+        if i < len(parts):
+            val = parts[i]
+            # Wildcards (*) als None oder leeren String behandeln für besseren Vergleich?
+            # Hier lassen wir sie als String "*", aber beim Vergleich beachten wir das.
+            parsed[name] = val
+        else:
+            parsed[name] = "*"
+            
     return parsed
 
-# Compare two parsed CPE dictionaries field-by-field (explicit checks, no loop).
-# Returns a tuple: (bool_match_found, list_of_matched_field_names)
 def compare_cpe_parts(remote_cpe: dict, local_cpe: dict):
+    """
+    Vergleicht zwei CPEs feldweise.
+    Matchlogik: Wenn Remote-Feld != '*' und != Local-Feld, dann KEIN Match.
+    """
     matched_fields = []
+    
+    # Kritische Felder, die übereinstimmen MÜSSEN (wenn nicht Wildcard)
+    check_fields = ["vendor", "product", "version", "update", "target_sw"]
+    
+    for field in check_fields:
+        r_val = remote_cpe.get(field, "*")
+        l_val = local_cpe.get(field, "*")
+        
+        # Bereinigen
+        r_val = str(r_val).strip().lower()
+        l_val = str(l_val).strip().lower()
+        
+        # Wenn Threat Intel sagt "*", passt es auf alles -> weiter
+        if r_val == "*":
+            continue
+            
+        # Wenn Asset sagt "*", ist es ungenau -> wir nehmen an es könnte passen (oder false positive prevention?)
+        # Hier: Strict Match -> Wenn Asset "*" hat, aber Threat eine Version, wissen wir es nicht genau.
+        # Wir gehen davon aus: Match nur bei expliziter Gleichheit.
+        
+        if r_val == l_val:
+            matched_fields.append(field)
+        else:
+            # Konflikt! Z.B. Threat sagt "16.12.1", Asset sagt "17.3".
+            return (False, [])
 
-    # Compare vendor fields
-    # If both sides have a vendor and they match (case-insensitive), record match
-    if remote_cpe.get("vendor") and local_cpe.get("vendor"):
-        if str(remote_cpe.get("vendor")).strip().lower() == str(local_cpe.get("vendor")).strip().lower():
-            matched_fields.append("vendor")
+    # Wenn wir hier ankommen, gab es keine Konflikte in den spezifizierten Feldern.
+    # Ein Match ist es aber nur, wenn mindestens Vendor & Product gematcht haben.
+    if "vendor" in matched_fields and "product" in matched_fields:
+        return (True, matched_fields)
+    
+    return (False, [])
 
-    # Compare product fields
-    # If both sides have a product and they match (case-insensitive), record match
-    if remote_cpe.get("product") and local_cpe.get("product"):
-        if str(remote_cpe.get("product")).strip().lower() == str(local_cpe.get("product")).strip().lower():
-            matched_fields.append("product")
-
-    # Compare version fields
-    if remote_cpe.get("version") and local_cpe.get("version"):
-        if str(remote_cpe.get("version")).strip().lower() == str(local_cpe.get("version")).strip().lower():
-            matched_fields.append("version")
-
-    # Compare update fields
-    if remote_cpe.get("update") and local_cpe.get("update"):
-        if str(remote_cpe.get("update")).strip().lower() == str(local_cpe.get("update")).strip().lower():
-            matched_fields.append("update")
-
-    # Compare edition fields
-    if remote_cpe.get("edition") and local_cpe.get("edition"):
-        if str(remote_cpe.get("edition")).strip().lower() == str(local_cpe.get("edition")).strip().lower():
-            matched_fields.append("edition")
-
-    # Compare language fields
-    if remote_cpe.get("language") and local_cpe.get("language"):
-        if str(remote_cpe.get("language")).strip().lower() == str(local_cpe.get("language")).strip().lower():
-            matched_fields.append("language")
-
-    # Compare sw_edition fields
-    if remote_cpe.get("sw_edition") and local_cpe.get("sw_edition"):
-        if str(remote_cpe.get("sw_edition")).strip().lower() == str(local_cpe.get("sw_edition")).strip().lower():
-            matched_fields.append("sw_edition")
-
-    # Compare target_sw fields
-    if remote_cpe.get("target_sw") and local_cpe.get("target_sw"):
-        if str(remote_cpe.get("target_sw")).strip().lower() == str(local_cpe.get("target_sw")).strip().lower():
-            matched_fields.append("target_sw")
-
-    # Compare target_hw fields
-    if remote_cpe.get("target_hw") and local_cpe.get("target_hw"):
-        if str(remote_cpe.get("target_hw")).strip().lower() == str(local_cpe.get("target_hw")).strip().lower():
-            matched_fields.append("target_hw")
-
-    # Compare other fields
-    if remote_cpe.get("other") and local_cpe.get("other"):
-        if str(remote_cpe.get("other")).strip().lower() == str(local_cpe.get("other")).strip().lower():
-            matched_fields.append("other")
-
-    # Return boolean (any match) and the list of matched field names
-    return (len(matched_fields) > 0, matched_fields)
-
-
-
-# Check whether a DataFrame row matches the provided value or CPE components.
-# Uses explicit field-by-field CPE comparison via compare_cpe_parts().
-def row_matches(row, value, cpe_parts):
-    # 1) Basic column-by-column equality checks (unchanged)
+def row_matches(row, value, cpe_parts_remote):
+    # 1. Einfacher String Match (Fallback)
     for col in row.index:
-        cell = row[col]
-        if cell == value:
-            return True, []  # match found, no CPE fields to report
-        if isinstance(cell, (str, int, float)) and str(cell).strip().lower() == str(value).strip().lower():
-            return True, []
+        cell = str(row[col]).strip().lower()
+        if cell == str(value).strip().lower():
+            return True, ["exact_string_match"]
 
-    # 2) If remote CPE dict provided and row has CPE_original, parse and compare field-by-field
+    # 2. Intelligenter CPE Match
     if CPE_COLUMN_NAME in row and isinstance(row[CPE_COLUMN_NAME], str):
-        # Parse the row-level CPE into a dict using the provided split_cpe function
-        local_cpe_dict = split_cpe(row[CPE_COLUMN_NAME])
-
-        # Perform explicit field-by-field comparisons (vendor vs vendor, product vs product, ...)
-        matched, matched_fields = compare_cpe_parts(cpe_parts, local_cpe_dict)
-
-        # If any field matched, return True and the matched fields
-        if matched:
-            return True, matched_fields
-
-    # No match found
+        local_cpe_str = row[CPE_COLUMN_NAME]
+        if local_cpe_str.startswith("cpe:"):
+            local_cpe_dict = split_cpe(local_cpe_str)
+            return compare_cpe_parts(cpe_parts_remote, local_cpe_dict)
+            
     return False, []
 
+# ==========================================
+# 3. CORE LOGIC
+# ==========================================
 
+def applyRules(row, techniques, description, cpe_parts, entity_type):
+    # Setup Columns
+    if "Temporal_Criticality" not in row.index: row["Temporal_Criticality"] = ""
+    if "Deactivated" not in row.index: row["Deactivated"] = ""
 
-#Check if a STIX object references any attribute values in the dataframe
+    # --- RULESET ---
+    
+    # RULE 1: Account Deactivation bei "Create Account" (T1136) oder Credentials Dumping (T1003)
+    # Wir prüfen, ob eine der gefundenen Techniken kritisch ist
+    critical_techniques = ["T1136", "T1003", "T1059"] # Create Account, Cred Dumping, Command/Scripting
+    
+    hit_technique = any(t['id'].startswith(ct) for t in techniques for ct in critical_techniques)
+    
+    if entity_type == "account":
+        # Wenn eine kritische Technik erkannt wurde UND das CPE passt -> Deaktivieren
+        if hit_technique:
+            row["Deactivated"] = "true"
+        else:
+            # Fallback: Nur Warnung oder Soft-Deactivate
+            row["Deactivated"] = "review_needed"
+
+    if entity_type == "permission":
+        criticality = str(row.get("Criticality", "")).upper()
+        # Escalation Logic
+        if criticality == "MEDIUM":
+            row["Temporal_Criticality"] = "HIGH"
+        elif criticality == "HIGH":
+            row["Temporal_Criticality"] = "VERY_HIGH"
+            
+    return row
+
 def match_stix_to_dataframe(df: pd.DataFrame, stix_data: dict, entity_type: str):
     report = []
     
-    # 1. Listen laden (mit Fallback auf leere Liste)
+    # 1. Listen laden (Neu: Support für Listen im CTI Object)
     cpe_list = stix_data.get("x_detected_cpes", [])
     technique_list = stix_data.get("x_detected_techniques", [])
     
-    # Fallback für alte JSONs: Wenn Liste leer, schau ob Legacy-Feld da ist
+    # Fallback für alte JSONs
     if not cpe_list and stix_data.get("cpe"):
         cpe_list = [{"cpe23": stix_data.get("cpe")}]
-        
-    # Beste Technik holen (für die applyRules Logik, falls diese nur eine Technik erwartet)
-    # Oder man iteriert auch hier. Fürs erste nehmen wir die Top-Technik.
-    primary_technique = technique_list[0]['id'] if technique_list else ""
+    
+    # Description
+    desc = stix_data.get("description", "")
 
-    # Iterate through each row in CSV
+    # Iteration über alle Zeilen der CSV
     for idx, row in df.iterrows():
-        match_found_for_row = False
         
-        # 2. Check against ALL detected CPEs
+        # Check gegen ALLE gefundenen CPEs aus dem Report
         for cpe_obj in cpe_list:
-            cpe_value = cpe_obj.get("cpe23", "")
-            match_score = cpe_obj.get("match_score", 1.0) # Score aus der Inference nutzen?
+            remote_cpe_str = cpe_obj.get("cpe23", "")
+            remote_cpe_parts = split_cpe(remote_cpe_str)
             
-            # Nur verarbeiten, wenn Score hoch genug (optional)
-            if match_score < 0.4: continue 
-
-            cpe_parts = split_cpe(cpe_value)
-            matched, matched_fields = row_matches(row, cpe_value, cpe_parts)
+            matched, matched_fields = row_matches(row, remote_cpe_str, remote_cpe_parts)
             
             if matched:
-                match_found_for_row = True
-                # Apply rules
-                updated_row = applyRules(row, primary_technique, stix_data.get("description", ""), cpe_parts, entity_type)
+                # Match gefunden! Regeln anwenden.
+                updated_row = applyRules(row, technique_list, desc, remote_cpe_parts, entity_type)
                 df.loc[idx] = updated_row
                 
+                # Logging
+                match_info = f"Matched Fields: {matched_fields}" if matched_fields else "Exact Match"
                 report.append(
-                    f"[{entity_type.upper()}] MATCH! Row ID {updated_row.get('ID', 'N/A')} matches threat CPE '{cpe_value}' (Score: {match_score:.2f}). "
-                    f"Action: Deactivated={updated_row.get('Deactivated','')}, Crit={updated_row.get('Temporal_Criticality','')}"
+                    f"[{entity_type.upper()}] HIT on ID {row.get('ID', 'N/A')}: "
+                    f"Asset CPE matches Threat CPE '{remote_cpe_str}'. "
+                    f"Action -> Deactivated={updated_row.get('Deactivated','')}, Crit={updated_row.get('Temporal_Criticality','')}"
                 )
-                # Wenn wir einen Match haben, brechen wir die CPE-Schleife ab (damit wir nicht 5x die gleiche Zeile ändern)
+                # Break inner loop (ein Match reicht pro Zeile)
                 break 
-        
+
     return df, report
 
-
-# Apply rules to a single DataFrame row (pandas.Series) and return the modified row.
-def applyRules(row, technique, description, cpe_parts, entity_type):
-    # Ensure columns exist on the row object (these will be added to the DataFrame when assigned back).
-    if "Temporal_Criticality" not in row.index:
-        # Add Temporal_Criticality placeholder
-        row["Temporal_Criticality"] = ""
-    if "Deactivated" not in row.index:
-        # Add Deactivated placeholder
-        row["Deactivated"] = ""
-
-    # Permission rules: use Criticality column value to decide new Temporal_Criticality
-    if entity_type == "permission":
-        # Read existing criticality value (empty string if missing)
-        criticality = row.get("Criticality", "")
-
-        # If criticality is MEDIUM, escalate to HIGH
-        if isinstance(criticality, str) and criticality.upper() == "MEDIUM":
-            row["Temporal_Criticality"] = "HIGH"
-
-        # If criticality is HIGH, escalate to VERY_HIGH
-        elif isinstance(criticality, str) and criticality.upper() == "HIGH":
-            row["Temporal_Criticality"] = "VERY_HIGH"
-
-        # TODO: add more fine-grained permission rules (e.g., consider technique/description/cpe_parts)
-
-    # Account rules: mark account as deactivated
-    if entity_type == "account":
-        # Mark the account as deactivated
-        row["Deactivated"] = "true"
-
-        # TODO: use technique/description/cpe_parts to refine decision (e.g., only deactivate if cpe matches)
-
-    # Optionally store triggering context for auditing (uncomment if desired)
-    # row["Triggered_Technique"] = technique
-    # row["Triggered_Description"] = description
-    # row["Triggered_CPE"] = ",".join(cpe_parts) if cpe_parts else ""
-
-    # Return the modified row so caller can write it back into the DataFrame
-    return row
-
-
-
 def startLoader():
-    #Step 1: Read CSV files  
+    print(f"🚀 Starte Loader im Verzeichnis: {WORKING_DIR}")
+    
+    # Check Files
+    if not os.path.exists(ACCOUNTS_CSV_PATH) or not os.path.exists(PERMISSIONS_CSV_PATH):
+        print("❌ Fehler: CSV Dateien fehlen! Wurden sie vom Setup heruntergeladen?")
+        return
+
+    if not os.path.exists(STIX_PATH):
+        print("❌ Fehler: Test_STIX.json fehlt! Wurde die Inference ausgeführt?")
+        return
+
+    # Load Data
     accounts_df = read_csv(ACCOUNTS_CSV_PATH)
     permissions_df = read_csv(PERMISSIONS_CSV_PATH)
-
-    #Step 2: Determine attributes and Print columns for debugging
-    print("Accounts attributes:", list(accounts_df.columns))
-    print("Permissions attributes:", list(permissions_df.columns))
-
-    #Step 3: Load STIX JSON file  
-    with open( STIX_PATH, "r", encoding="utf-8") as f:
+    
+    with open(STIX_PATH, "r", encoding="utf-8") as f:
         stix_data = json.load(f)
 
-    #Step 4: Extract relevant data from transformed STIX object
+    print(f"📥 Verarbeite CTI Object: {stix_data.get('type', 'Unknown')} - {stix_data.get('id')}")
 
-
-    #TODO Expand logic 
+    # Process
     all_reports = []
-    #Try to match object attributes against both CSVs
+    
     permissions_df, perm_report = match_stix_to_dataframe(permissions_df, stix_data, "permission")
     accounts_df, acc_report = match_stix_to_dataframe(accounts_df, stix_data, "account")
     
-    #Collect reports
     all_reports.extend(perm_report)
     all_reports.extend(acc_report)
-        
 
-
-    #Step 5: Save CSV files  
-    #save_csv(accounts_df, "accounts.csv")
-    #save_csv(permissions_df, "permissions.csv")
-    #Aktuell Test mit modifizierten files
+    # Save
     save_csv(accounts_df, ACCOUNTS_MODIFIED_PATH)
     save_csv(permissions_df, PERMISSIONS_MODIFIED_PATH)
 
-
-
-    #Step 6: Write final report  
+    # Report
     if not all_reports:
-        all_reports.append("No rules were activated.")
+        all_reports.append("No matches found based on current Threat Intel.")
     else:
-        all_reports.insert(0, "STIX-based CSV modification report")
-        #all_reports.insert(1, "=" * 60)
+        all_reports.insert(0, f"Modification Report for Threat: {stix_data.get('description')[:50]}...")
+        
     write_report(all_reports, OUTPUT_REPORT_PATH)
+    print(f"✅ Fertig. Report gespeichert unter: {OUTPUT_REPORT_PATH}")
 
-    print("Processing complete. Modified files and generated report.")
-
-
-startLoader()
-
+if __name__ == "__main__":
+    startLoader()
