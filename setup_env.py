@@ -81,7 +81,7 @@ try:
         print("      ✅ Found in Model Registry.")
     except Exception:
         print("      ⚠️ Model registry failed. Trying as Dataset...")
-        adapter_path = kagglehub.dataset_download('mathismller/mistral_cpe_extractor')
+        adapter_path = kagglehub.dataset_download('mathismller/mistral-cpe-extractor')
 
     base_model_id = "mistralai/Mistral-7B-Instruct-v0.3"
     print("   ⏳ Loading Base Model...")
@@ -216,7 +216,7 @@ try:
     try:
         sbert_path = kagglehub.model_download(SBERT_HANDLE)
     except:
-        sbert_path = kagglehub.dataset_download('mathismller/sBERT_MITRE_technique_extractor')
+        sbert_path = kagglehub.dataset_download('mathismller/sbert-mitre-technique-extractor')
 
 except Exception as e:
     print("   ❌ Error: Could not download SBERT model.")
