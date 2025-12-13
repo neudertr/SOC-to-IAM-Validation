@@ -73,11 +73,11 @@ log(f"STEP 3/5: Loading text2CPE Model on {device_cpe}...")
 
 try:
     # Screenshot Name: mistral_CPE_extractor (Unterstriche!)
-    MODEL_HANDLE = 'mathismller/mistral_CPE_extractor/pyTorch/default/1'
+    MODEL_HANDLE = 'mathismller/mistral-cpe-extractor/pyTorch/default/1'
     
     print(f"   ⬇️  Attempting to download Model: {MODEL_HANDLE}...")
     try:
-        adapter_path = kagglehub.model_download('mathismller/mistral-cpe-extractor')
+        adapter_path = kagglehub.model_download(MODEL_HANDLE)
         print("      ✅ Found in Model Registry.")
     except Exception:
         print("      ⚠️ Model registry failed. Trying as Dataset...")
@@ -211,10 +211,10 @@ class MitreMapper:
 
 try:
     # Screenshot Name: sBERT_MITRE_technique_extractor
-    SBERT_HANDLE = 'mathismller/sBERT_MITRE_technique_extractor/pyTorch/default/1'
+    SBERT_HANDLE = 'mathismller/sbert-mitre-technique-extractor/pyTorch/default/1'
     print(f"   ⬇️  Attempting to download SBERT Model: {SBERT_HANDLE}...")
     try:
-        sbert_path = kagglehub.model_download('mathismller/sbert-mitre-technique-extractor')
+        sbert_path = kagglehub.model_download(SBERT_HANDLE)
     except:
         sbert_path = kagglehub.dataset_download('mathismller/sbert-mitre-technique-extractor')
 
