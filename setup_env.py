@@ -67,9 +67,23 @@ else:
 log(f"STEP 3/5: Loading text2CPE Model on {device_cpe}...")
 
 try:
-    # 1. Download/Locate Adapter
-    # Replace with your actual user/dataset path
-    adapter_path = kagglehub.dataset_download('mathismller/mistral-cpe-extractor')
+    # ---------------------------------------------------------
+    # FIX: Try downloading as a MODEL first (since your screenshot shows Models)
+    # ---------------------------------------------------------
+    # ⚠️ REPLACE 'mathismller' WITH YOUR EXACT KAGGLE HANDLE (Check your URL!)
+    # ⚠️ If your model URL ends in .../pyTorch/default/1, use that full path.
+    
+    MODEL_HANDLE = 'mathismller/mistral-cpe-extractor/pyTorch/default/1'
+    
+    print(f"   ⬇️  Attempting to download Model: {MODEL_HANDLE}...")
+    try:
+        adapter_path = kagglehub.model_download(MODEL_HANDLE)
+        print("      ✅ Found in Model Registry.")
+    except Exception:
+        print("      ⚠️ Model registry failed. Trying as Dataset...")
+        # Fallback: Try as dataset if you re-uploaded it
+        adapter_path = kagglehub.dataset_download('mathismller/mistral-cpe-extractor')
+
     print(f"   📂 Adapter path: {adapter_path}")
 
     # 2. Load Base Model
@@ -176,7 +190,22 @@ class MitreMapper:
             pickle.dump({"techniques": self.techniques, "embeddings": self.embeddings.cpu()}, f)
 
 # Download dependencies
-sbert_path = kagglehub.dataset_download('mathismller/sbert-mitre-technique-extractor')
+try:
+    # ---------------------------------------------------------
+    # FIX: Same logic for the second model
+    # ---------------------------------------------------------
+    SBERT_HANDLE = 'mathismller/sbert-mitre-technique-extractor/pyTorch/default/1'
+    
+    print(f"   ⬇️  Attempting to download SBERT Model: {SBERT_HANDLE}...")
+    try:
+        sbert_path = kagglehub.model_download(SBERT_HANDLE)
+    except:
+        sbert_path = kagglehub.dataset_download('mathismller/sbert-mitre-technique-extractor')
+
+except Exception as e:
+    print("   ❌ Error: Could not download SBERT model.")
+    print(f"   Detailed Error: {e}")
+    raise Exception("SBERT Download Failed")
 excel_url = "https://raw.githubusercontent.com/neudertr/SOC-to-IAM-Validation/main/enterprise-attack-v18.1-techniques.xlsx"
 subprocess.run(f"wget -q -O enterprise.xlsx {excel_url}", shell=True)
 
