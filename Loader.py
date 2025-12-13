@@ -16,8 +16,6 @@ ACCOUNTS_MODIFIED_PATH = os.path.join(WORKING_DIR, "accounts_modified.csv")
 PERMISSIONS_MODIFIED_PATH = os.path.join(WORKING_DIR, "permissions_modified.csv")
 
 CPE_COLUMN_NAME = "Software_System"
-
-# Link-Spalten (Join Keys)
 PERM_LINK_COL = "Sorting"
 ACC_LINK_COL = "SortingAttribute"
 
@@ -54,27 +52,60 @@ def split_cpe(cpe_string: str):
             parsed[name] = "*"
     return parsed
 
+# --- WICHTIG: DIE NEUE SMART MATCHING LOGIK ---
 def compare_cpe_parts(remote_cpe: dict, local_cpe: dict):
     matched_fields = []
-    check_fields = ["vendor", "product", "version", "update", "target_sw"]
     
-    for field in check_fields:
-        r_val = str(remote_cpe.get(field, "*")).strip().lower()
-        l_val = str(local_cpe.get(field, "*")).strip().lower()
-        
-        if r_val == "*" or r_val == "": continue
-        
-        if r_val == l_val:
-            matched_fields.append(field)
-        else:
-            return (False, []) # Mismatch
+    # 1. Vendor Check (Muss strikt passen, außer Wildcard)
+    r_vendor = str(remote_cpe.get("vendor", "*")).strip().lower()
+    l_vendor = str(local_cpe.get("vendor", "*")).strip().lower()
+    
+    if r_vendor != "*" and r_vendor != l_vendor:
+        return (False, []) # Vendor passt nicht -> Sofort raus
+    
+    matched_fields.append("vendor")
 
-    if "vendor" in matched_fields and "product" in matched_fields:
-        return (True, matched_fields)
-    return (False, [])
+    # 2. Smart Product/Version Check
+    r_product = str(remote_cpe.get("product", "*")).strip().lower()
+    l_product = str(local_cpe.get("product", "*")).strip().lower()
+    
+    r_version = str(remote_cpe.get("version", "*")).strip().lower()
+    l_version = str(local_cpe.get("version", "*")).strip().lower()
+    
+    product_match = False
+
+    # Szenario A: Exakter Produkt-Match
+    # KI: "windows_server" == Asset: "windows_server"
+    if r_product == "*" or r_product == l_product:
+        product_match = True
+        matched_fields.append("product_exact")
+        
+        # Dann prüfen wir Version strikt (sofern nicht Wildcard)
+        if r_version != "*" and r_version != "-" and r_version != "":
+            if r_version != l_version:
+                return (False, []) # Version passt nicht
+            matched_fields.append("version_exact")
+
+    # Szenario B: "Sticky Version" (KI hat Version ins Produkt gezogen)
+    # KI: "windows_server_2022" enthält Asset: "windows_server" UND Asset: "2022"
+    elif l_product in r_product and l_version != "*" and l_version in r_product:
+        product_match = True
+        matched_fields.append("product_fuzzy_sticky")
+        matched_fields.append("version_fuzzy_sticky")
+        
+    # Szenario C: "Overspecific Asset" (Asset hat Version im Namen, KI trennt sauber)
+    # KI: "windows_server" in Asset: "windows_server_2022"
+    elif r_product in l_product and r_version != "*" and r_version in l_product:
+        product_match = True
+        matched_fields.append("product_fuzzy_reverse")
+
+    if not product_match:
+        return (False, [])
+
+    return (True, matched_fields)
+# ---------------------------------------------
 
 def row_matches_cpe(row, cpe_parts_remote):
-    """ Prüft nur die CPE Spalte einer Zeile """
     if CPE_COLUMN_NAME in row and isinstance(row[CPE_COLUMN_NAME], str):
         local_cpe_str = row[CPE_COLUMN_NAME]
         if local_cpe_str.startswith("cpe:"):
@@ -87,20 +118,18 @@ def row_matches_cpe(row, cpe_parts_remote):
 # ==========================================
 
 def process_permissions(df: pd.DataFrame, stix_data: dict):
-    """
-    1. Prüft Permissions auf CPE Matches.
-    2. Setzt Criticality hoch.
-    3. GIBT EINE LISTE DER BETROFFENEN 'SORTING' IDs ZURÜCK!
-    """
     report = []
-    affected_link_ids = set() # Hier speichern wir 'A', 'B', 'C' etc.
+    affected_link_ids = set()
     
     cpe_list = stix_data.get("x_detected_cpes", [])
-    if not cpe_list and stix_data.get("cpe"): cpe_list = [{"cpe23": stix_data.get("cpe")}]
+    # Legacy Support
+    if not cpe_list and stix_data.get("cpe"): 
+        cpe_list = [{"cpe23": stix_data.get("cpe")}]
 
     if "Temporal_Criticality" not in df.columns: df["Temporal_Criticality"] = ""
 
     for idx, row in df.iterrows():
+        match_found = False
         for cpe_obj in cpe_list:
             remote_cpe_str = cpe_obj.get("cpe23", "")
             remote_cpe_parts = split_cpe(remote_cpe_str)
@@ -108,46 +137,40 @@ def process_permissions(df: pd.DataFrame, stix_data: dict):
             matched, matched_fields = row_matches_cpe(row, remote_cpe_parts)
             
             if matched:
-                # 1. Permission markieren (Eskalation)
+                match_found = True
+                # Eskalation
                 crit = str(row.get("Criticality", "")).upper()
                 if crit == "MEDIUM": df.loc[idx, "Temporal_Criticality"] = "HIGH"
                 elif crit == "HIGH": df.loc[idx, "Temporal_Criticality"] = "VERY_HIGH"
                 
-                # 2. Link-ID merken (für Accounts)
+                # Link ID merken
                 link_id = row.get(PERM_LINK_COL)
                 if link_id:
                     affected_link_ids.add(link_id)
 
                 report.append(
                     f"[PERMISSION] HIT on ID {row.get('ID')} (Link: {link_id}). "
-                    f"CPE Match '{remote_cpe_str}'. Crit escalated."
+                    f"Match Logic: {matched_fields}. Crit escalated."
                 )
                 break 
     
     return df, report, affected_link_ids
 
-
 def process_accounts(df: pd.DataFrame, stix_data: dict, affected_link_ids: set):
-    """
-    Prüft Accounts NICHT auf CPEs, sondern ob ihre 'SortingAttribute' ID
-    in der Liste der betroffenen Permissions ist.
-    """
     report = []
     technique_list = stix_data.get("x_detected_techniques", [])
     
-    # Kritische Techniken, die eine Sperrung auslösen
+    # Kritische Techniken (T1003 ist Credential Dumping)
     critical_techniques = ["T1136", "T1003", "T1059"] 
     hit_technique = any(t['id'].startswith(ct) for t in technique_list for ct in critical_techniques)
     
     if "Deactivated" not in df.columns: df["Deactivated"] = ""
 
     for idx, row in df.iterrows():
-        # Link prüfen: Hat dieser Account eine betroffene Permission?
         acc_link_id = row.get(ACC_LINK_COL)
         
         if acc_link_id in affected_link_ids:
-            # JA! Der Account nutzt die verwundbare Software (via Permission Link).
-            
+            # Account ist mit betroffener Permission verknüpft!
             if hit_technique:
                 df.loc[idx, "Deactivated"] = "true"
                 action = "Deactivated=true"
@@ -157,7 +180,7 @@ def process_accounts(df: pd.DataFrame, stix_data: dict, affected_link_ids: set):
 
             report.append(
                 f"[ACCOUNT] HIT on ID {row.get('AccountID')} (Link: {acc_link_id}). "
-                f"Linked Permission matches Threat CPE. Critical Technique detected? {hit_technique}. -> {action}"
+                f"Inherited Vulnerability. Technique Critical? {hit_technique}. -> {action}"
             )
             
     return df, report
@@ -166,7 +189,7 @@ def process_accounts(df: pd.DataFrame, stix_data: dict, affected_link_ids: set):
 # 4. MAIN EXECUTION
 # ==========================================
 def startLoader():
-    print(f"🚀 Starte Linked Loader im Verzeichnis: {WORKING_DIR}")
+    print(f"🚀 Starte Linked Loader (Smart Match Edition)...")
     
     if not os.path.exists(ACCOUNTS_CSV_PATH) or not os.path.exists(PERMISSIONS_CSV_PATH) or not os.path.exists(STIX_PATH):
         print("❌ Fehler: Dateien fehlen.")
@@ -180,14 +203,11 @@ def startLoader():
 
     print(f"📥 CTI Object geladen. Start Matching...")
 
-    # SCHRITT 1: Permissions verarbeiten & betroffene Links sammeln
     permissions_df, perm_report, affected_links = process_permissions(permissions_df, stix_data)
-    print(f"🔗 Betroffene Verknüpfungen (Sorting IDs): {affected_links}")
+    print(f"🔗 Betroffene Sorting-IDs (Links): {affected_links}")
 
-    # SCHRITT 2: Accounts basierend auf Links verarbeiten
     accounts_df, acc_report = process_accounts(accounts_df, stix_data, affected_links)
 
-    # Save & Report
     save_csv(accounts_df, ACCOUNTS_MODIFIED_PATH)
     save_csv(permissions_df, PERMISSIONS_MODIFIED_PATH)
 
