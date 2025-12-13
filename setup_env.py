@@ -245,4 +245,20 @@ for script in scripts:
     else:
         print(f"   ✅ {script} present.")
 
-log("🎉 SYSTEM READY. PROCEED TO NEXT CELL.")
+log("🎉 SYSTEM READY.")
+
+# ==========================================
+# 7. DOWNLOAD Loader logic
+# ==========================================
+log("FINAL +1 : Fetching Loader Logic...")
+
+scripts = ["Loader.py", "orchestrator_stix.py"]
+
+for script in scripts:
+    if not os.path.exists(script):
+        url = f"{BASE_URL}{script}"
+        subprocess.run(f"wget -q -O {script} {url}", shell=True)
+    else:
+        print(f"   ✅ {script} present.")
+
+log("🎉 Loader READY. PROCEED TO NEXT CELL.")
