@@ -4,22 +4,28 @@ import sys
 import subprocess
 import time
 
+# --- SAFETY CHECK ---
+# Wir prüfen, ob die Variablen aus der Kaggle-Zelle da sind.
+if "BASE_URL" not in globals():
+    raise ValueError("❌ FEHLER: 'BASE_URL' wurde nicht gefunden. Bitte definieren Sie diese Variable in der Kaggle-Zelle!")
+
 def log(msg):
     print(f"\n[{time.strftime('%H:%M:%S')}] ℹ️  {msg}")
 
 def run_command(command, task_name):
     print(f"   ⏳ {task_name}...", end=" ", flush=True)
     try:
-        subprocess.check_call(command, shell=True)
+        subprocess.check_call(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print("✅ Done.")
-    except subprocess.CalledProcessError as e:
-        print("❌ Failed.")
-        raise e
+    except subprocess.CalledProcessError:
+        print("⚠️ Warning (proceeding anyway).")
 
 # ==========================================
 # 1. INSTALLATION & ENVIRONMENT
 # ==========================================
 log("STEP 1/5: Checking Environment & Libraries...")
+
+run_command("pip install -q -U --force-reinstall 'protobuf>=3.20.3'", "Fixing Protobuf")
 
 # Check if libraries are already installed to speed up re-runs
 try:
@@ -43,7 +49,7 @@ import pickle
 import kagglehub
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import SentenceTransformer
 
 # ==========================================
 # 2. GPU SETUP
@@ -53,13 +59,13 @@ n_gpus = torch.cuda.device_count()
 print(f"   🖥️  Found {n_gpus} GPU(s).")
 
 if n_gpus < 2:
-    print("   ⚠️  Single GPU mode. Warning: High VRAM usage expected.")
+    print("   ⚠️  Single GPU mode.")
     device_cpe = "cuda:0"
     device_techn = "cuda:0"
 else:
     print("   ✅ Dual-GPU mode active.")
-    device_cpe = "cuda:0"  # Mistral
-    device_techn = "cuda:1" # SBERT
+    device_cpe = "cuda:0"
+    device_techn = "cuda:1"
 
 # ==========================================
 # 3. LOAD TEXT2CPE (Mistral)
@@ -67,30 +73,18 @@ else:
 log(f"STEP 3/5: Loading text2CPE Model on {device_cpe}...")
 
 try:
-    # ---------------------------------------------------------
-    # FIX: Try downloading as a MODEL first (since your screenshot shows Models)
-    # ---------------------------------------------------------
-    # ⚠️ REPLACE 'mathismller' WITH YOUR EXACT KAGGLE HANDLE (Check your URL!)
-    # ⚠️ If your model URL ends in .../pyTorch/default/1, use that full path.
-    
     MODEL_HANDLE = 'mathismller/mistral-cpe-extractor/pyTorch/default/1'
-    
     print(f"   ⬇️  Attempting to download Model: {MODEL_HANDLE}...")
     try:
         adapter_path = kagglehub.model_download(MODEL_HANDLE)
         print("      ✅ Found in Model Registry.")
     except Exception:
         print("      ⚠️ Model registry failed. Trying as Dataset...")
-        # Fallback: Try as dataset if you re-uploaded it
         adapter_path = kagglehub.dataset_download('mathismller/mistral-cpe-extractor')
 
-    print(f"   📂 Adapter path: {adapter_path}")
-
-    # 2. Load Base Model
     base_model_id = "mistralai/Mistral-7B-Instruct-v0.3"
-    print("   ⏳ Loading Base Model (4-bit)...")
+    print("   ⏳ Loading Base Model...")
     
-    # Check for HF Token (optional, if model is gated)
     from kaggle_secrets import UserSecretsClient
     try:
         hf_token = UserSecretsClient().get_secret("HF_TOKEN")
@@ -108,7 +102,6 @@ try:
         token=hf_token
     )
 
-    # 3. Load Adapter
     model_cpe = PeftModel.from_pretrained(model_cpe, adapter_path)
     model_cpe.eval()
     print("   ✅ text2CPE Model loaded successfully.")
@@ -118,27 +111,25 @@ except Exception as e:
     raise e
 
 # ==========================================
-# 4. LOAD RAG ARTIFACTS
+# 4. LOAD RAG ARTIFACTS (FROM GIT)
 # ==========================================
-log("STEP 4/5: Loading RAG Knowledge Base...")
+# Hier nutzen wir jetzt die globalen Variablen REPO und BASE_URL
+log(f"STEP 4/5: Loading RAG Knowledge Base from Git ({REPO})...")
 
 rag_files = ["cpe_meta.parquet", "cpe_tfidf.npz", "vectorizer.pkl"]
-rag_path = os.getcwd() # Save to current working directory
+rag_path = os.getcwd() 
 
-print(f"   ⬇️  Fetching RAG artifacts from GitHub ({REPO})...")
+print(f"   ⬇️  Fetching artifacts from: {BASE_URL}")
 
 for file_name in rag_files:
-    # Only download if not already present (speeds up re-runs)
     if not os.path.exists(file_name):
-        url = f"{BASE_URL}{file_name}"
+        url = f"{BASE_URL}{file_name}" # Nutzt Variable aus Zelle
         print(f"      Downloading {file_name}...", end=" ")
         try:
-            # -q = quiet, -O = output filename
             subprocess.check_call(f"wget -q -O {file_name} {url}", shell=True)
             print("✅")
         except subprocess.CalledProcessError:
             print("❌ Failed.")
-            print(f"      ⚠️ Critical: Could not download {file_name}. Check if it exists in the repo root.")
             raise Exception(f"Download failed for {file_name}")
     else:
         print(f"      ✅ {file_name} already present.")
@@ -146,7 +137,6 @@ for file_name in rag_files:
 print(f"   📂 Reading RAG data from: {rag_path}")
 
 try:
-    # Load directly from current directory
     df_meta = pd.read_parquet(os.path.join(rag_path, "cpe_meta.parquet"))
     tfidf_matrix = scipy.sparse.load_npz(os.path.join(rag_path, "cpe_tfidf.npz"))
     with open(os.path.join(rag_path, "vectorizer.pkl"), "rb") as f:
@@ -154,7 +144,6 @@ try:
     print("   ✅ RAG Database loaded.")
 except Exception as e:
     print(f"   ❌ Error loading RAG artifacts: {e}")
-    print("      (Hint: If you get 'UnpicklingError' or 'Parquet error', your file on GitHub might be an LFS pointer!)")
     raise e
 
 # ==========================================
@@ -181,7 +170,6 @@ class MitreMapper:
 
     def build_index(self, excel_path, save_path):
         df = pd.read_excel(excel_path)
-        # Simplified logic for brevity
         corpus = []
         col_id = next(c for c in df.columns if "id" in c.lower() and "matrix" not in c.lower())
         col_name = next(c for c in df.columns if "name" in c.lower())
@@ -195,13 +183,8 @@ class MitreMapper:
         with open(save_path, "wb") as f:
             pickle.dump({"techniques": self.techniques, "embeddings": self.embeddings.cpu()}, f)
 
-# Download dependencies
 try:
-    # ---------------------------------------------------------
-    # FIX: Same logic for the second model
-    # ---------------------------------------------------------
     SBERT_HANDLE = 'mathismller/sbert-mitre-technique-extractor/pyTorch/default/1'
-    
     print(f"   ⬇️  Attempting to download SBERT Model: {SBERT_HANDLE}...")
     try:
         sbert_path = kagglehub.model_download(SBERT_HANDLE)
@@ -210,12 +193,14 @@ try:
 
 except Exception as e:
     print("   ❌ Error: Could not download SBERT model.")
-    print(f"   Detailed Error: {e}")
     raise Exception("SBERT Download Failed")
-excel_url = "https://raw.githubusercontent.com/neudertr/SOC-to-IAM-Validation/main/enterprise-attack-v18.1-techniques.xlsx"
-subprocess.run(f"wget -q -O enterprise.xlsx {excel_url}", shell=True)
 
-# Init Mapper
+excel_file = "enterprise-attack-v18.1-techniques.xlsx"
+excel_url = f"{BASE_URL}{excel_file}" # Nutzt Variable aus Zelle
+
+if not os.path.exists("enterprise.xlsx"):
+    subprocess.run(f"wget -q -O enterprise.xlsx {excel_url}", shell=True)
+
 mapper_engine = MitreMapper(sbert_path, "enterprise.xlsx", "mitre_index.pkl", device_techn)
 print("   ✅ text2techn System ready.")
 
@@ -224,13 +209,12 @@ print("   ✅ text2techn System ready.")
 # ==========================================
 log("FINAL: Fetching Inference Logic...")
 
-base_url = "https://raw.githubusercontent.com/neudertr/SOC-to-IAM-Validation/main/"
 scripts = ["text2technique_inference.py", "text2CPE_inference.py"]
 
 for script in scripts:
     if not os.path.exists(script):
-        print(f"   ⬇️  Downloading {script}...")
-        subprocess.run(f"wget -q -O {script} {base_url}{script}", shell=True)
+        url = f"{BASE_URL}{script}" # Nutzt Variable aus Zelle
+        subprocess.run(f"wget -q -O {script} {url}", shell=True)
     else:
         print(f"   ✅ {script} present.")
 
