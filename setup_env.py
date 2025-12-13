@@ -77,7 +77,7 @@ try:
     
     print(f"   ⬇️  Attempting to download Model: {MODEL_HANDLE}...")
     try:
-        adapter_path = kagglehub.model_download(MODEL_HANDLE)
+        adapter_path = kagglehub.model_download('mathismller/mistral-cpe-extractor')
         print("      ✅ Found in Model Registry.")
     except Exception:
         print("      ⚠️ Model registry failed. Trying as Dataset...")
@@ -214,7 +214,7 @@ try:
     SBERT_HANDLE = 'mathismller/sBERT_MITRE_technique_extractor/pyTorch/default/1'
     print(f"   ⬇️  Attempting to download SBERT Model: {SBERT_HANDLE}...")
     try:
-        sbert_path = kagglehub.model_download(SBERT_HANDLE)
+        sbert_path = kagglehub.model_download('mathismller/sbert-mitre-technique-extractor')
     except:
         sbert_path = kagglehub.dataset_download('mathismller/sbert-mitre-technique-extractor')
 
