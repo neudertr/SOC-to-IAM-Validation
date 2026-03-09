@@ -82,7 +82,7 @@ import pandas as pd
 import scipy.sparse
 import pickle
 import kagglehub
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from peft import PeftModel
 
 
@@ -130,11 +130,19 @@ try:
     tokenizer_cpe = AutoTokenizer.from_pretrained(base_model_id, token=hf_token)
     tokenizer_cpe.pad_token = tokenizer_cpe.eos_token
 
+    # BitsAndBytesConfig für 4-bit Quantisierung
+    # (load_in_4bit als direkter Parameter ist in neueren transformers-Versionen entfernt,
+    #  torch_dtype ist zu dtype umbenannt)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.bfloat16,
+    )
+
     model_cpe = AutoModelForCausalLM.from_pretrained(
         base_model_id,
-        load_in_4bit=True,
+        quantization_config=bnb_config,
         device_map=device_cpe,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         token=hf_token,
     )
     model_cpe = PeftModel.from_pretrained(model_cpe, adapter_path)
