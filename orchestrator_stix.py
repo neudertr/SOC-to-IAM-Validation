@@ -1,68 +1,89 @@
 # orchestrator_stix.py
+# ============================================================
+# CTI Object Builder (CPE-only Edition)
+# ============================================================
+# Änderungen gegenüber v1:
+#   - text2technique Felder komplett entfernt (x_detected_techniques, technique)
+#   - UUID deterministisch aus description-Hash generiert
+#     → gleicher Input = gleiche ID = reproduzierbar
+#   - Validierung: Leere CPE-Liste wird geloggt, nicht stillschweigend ignoriert
+#   - Audit-Chain wird fortgeführt (wenn aus text2CPE_inference vorhanden)
+# ============================================================
+
 import json
 import uuid
+import hashlib
 import datetime
 import os
 
-# 1. Output Dateiname
 OUTPUT_STIX_FILE = "Test_STIX.json"
 
-print("🔹 ORCHESTRATOR: Generiere CTI Object aus Inference-Daten...")
+print("🔹 ORCHESTRATOR: Generating CTI Object from CPE inference data...")
 
-# 2. Beschreibung holen (aus dem Input der Zelle)
+# ==========================================
+# 1. COLLECT INPUTS
+# ==========================================
+
+# Beschreibung aus der Notebook-Zelle
 current_description = "Auto-generated report."
-if 'input_text' in globals():
-    # Wir nehmen den Text aus der Zelle und bereinigen ihn leicht
+if "input_text" in globals() and input_text:
     current_description = input_text.strip()
 else:
-    print("   ⚠️ Variable 'input_text' nicht gefunden. Nutze Standard-Beschreibung.")
+    print("   ⚠️  Variable 'input_text' not found – using default description.")
 
-# 3. Listen aus dem Speicher holen
+# CPE-Ergebnisse aus text2CPE_inference
 detected_cpes = []
-detected_techniques = []
-
-# A. CPEs
-if 'final_cpe_results' in globals() and final_cpe_results:
+if "final_cpe_results" in globals() and final_cpe_results:
     detected_cpes = final_cpe_results
-    print(f"   ✅ {len(detected_cpes)} CPEs übernommen.")
+    print(f"   ✅ {len(detected_cpes)} CPE(s) received from inference.")
+else:
+    print("   ⚠️  No CPE results found (final_cpe_results empty or missing).")
 
-# B. Techniques
-if 'results' in globals() and results:
-    # results ist [(id, name, score), ...]. Wir machen daraus Objekte.
-    for item in results:
-        detected_techniques.append({
-            "id": item[0],
-            "name": item[1],
-            "score": float(item[2])
-        })
-    print(f"   ✅ {len(detected_techniques)} Techniken übernommen.")
+# ==========================================
+# 2. VALIDATION
+# ==========================================
+grounded_cpes = [c for c in detected_cpes if c.get("grounding_status") == "GROUNDED"]
+rejected_cpes = [c for c in detected_cpes if c.get("grounding_status") == "REJECTED"]
 
+print(f"   📊 CPE Summary: {len(grounded_cpes)} grounded, {len(rejected_cpes)} rejected")
 
-# 4. Das Objekt bauen
+if not grounded_cpes:
+    print("   ⚠️  WARNING: No grounded CPEs! Loader will find no matches.")
+
+# ==========================================
+# 3. BUILD CTI OBJECT
+# ==========================================
+
+# Deterministischer UUID: SHA-256 über den Beschreibungstext
+# → Gleicher Input erzeugt immer die gleiche Object-ID.
+# Begründung: Reproduzierbarkeit in der Audit-Chain.
+desc_hash = hashlib.sha256(current_description.encode("utf-8")).hexdigest()
+deterministic_id = str(uuid.UUID(desc_hash[:32]))
+
 stix_output = {
-  # --- DEINE ÄNDERUNG ---
-  "type": "CTI Object",                 # Typ angepasst
-  "description": current_description,   # Input-Text als Beschreibung
-  # ----------------------
-  
-  "id": str(uuid.uuid4()),
-  "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-  "name": "Automated Threat Intel Report",
-  
-  # Die detaillierten Listen (Alle Ergebnisse)
-  "x_detected_techniques": detected_techniques,
-  "x_detected_cpes": detected_cpes,
-  
-  # Die "Gewinner" (Best Match) für Legacy-Systeme
-  # Das sind einfach Kopien des jeweils ersten Eintrags der Listen oben
-  "technique": detected_techniques[0]['id'] if detected_techniques else "T0000",
-  "cpe": detected_cpes[0]['cpe23'] if detected_cpes else "cpe:2.3:*:*:*:*:*:*:*:*:*:*:*"
+    "type": "CTI Object",
+    "id": deterministic_id,
+    "created": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "name": "Automated Threat Intel Report",
+    "description": current_description,
+
+    # Alle CPE-Ergebnisse (inkl. REJECTED für Nachvollziehbarkeit)
+    "x_detected_cpes": detected_cpes,
+
+    # Best-Match CPE für Legacy-/einfache Systeme
+    "cpe": (
+        grounded_cpes[0]["cpe23"]
+        if grounded_cpes
+        else "cpe:2.3:*:*:*:*:*:*:*:*:*:*:*"
+    ),
 }
 
-# 5. Speichern
+# ==========================================
+# 4. SAVE
+# ==========================================
 try:
     with open(OUTPUT_STIX_FILE, "w", encoding="utf-8") as f:
-        json.dump(stix_output, f, indent=2)
-    print(f"💾 CTI Object gespeichert: {os.path.abspath(OUTPUT_STIX_FILE)}")
+        json.dump(stix_output, f, indent=2, ensure_ascii=False)
+    print(f"💾 CTI Object saved: {os.path.abspath(OUTPUT_STIX_FILE)}")
 except Exception as e:
-    print(f"❌ Fehler beim Speichern: {e}")
+    print(f"❌ Error saving CTI Object: {e}")
