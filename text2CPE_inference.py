@@ -2,31 +2,30 @@
 # ============================================================
 # CPE Extraction via LoRA-finetuned Mistral 7B + TF-IDF Grounding
 # ============================================================
-# Änderungen gegenüber v1:
 #
-# [DETERMINISMUS / AUDIT-CHAIN]
-#   - Vollständiger Audit-Log von Input → LLM-Output → Parse → Grounding → Ergebnis
-#   - Jeder CPE-Kandidat bekommt einen Status: GROUNDED / REJECTED / PARSE_ERROR
-#   - Log enthält: raw LLM output, extrahiertes JSON, Score pro Kandidat,
-#     Grounding-Entscheidung mit Begründung
+# [DETERMINISM / AUDIT CHAIN]
+#   - Complete audit log from input → LLM output → parse → grounding → result
+#   - Each CPE candidate is assigned a status: GROUNDED / REJECTED / PARSE_ERROR
+#   - Log contains: raw LLM output, extracted JSON, score per candidate,
+#     grounding decision with justification
 #
-# [LLM-PARAMETER – KORREKTHEIT]
-#   - do_sample=False + temperature entfernt → temperature wird bei greedy ignoriert,
-#     war irreführend. Greedy = deterministisch = korrekt für Extraktion.
-#   - repetition_penalty=1.0 entfernt → 1.0 = kein Effekt, toter Parameter.
-#   - num_beams=1 explizit gesetzt → Dokumentiert dass kein Beam-Search.
+# [LLM PARAMETER – CORRECTNESS]
+#   - do_sample=False + temperature removed → temperature is ignored in greedy,
+#     was misleading. Greedy = deterministic = correct for extraction.
+#   - repetition_penalty=1.0 removed → 1.0 = no effect, dead parameter.
+#   - num_beams=1 explicitly set → Documents that no beam search.
 #
 # [PERFORMANCE]
-#   - cosine_similarity ersetzt durch sparse dot-product:
-#     (query_vec @ tfidf_matrix.T).toarray() → vermeidet dense Konvertierung
-#     der gesamten Matrix, spart ~50% RAM bei großen Dictionaries.
-#   - Ergebnis identisch (TF-IDF ist L2-normiert → dot = cosine).
-#   - torch.inference_mode() statt torch.no_grad() → schneller, kein Gradient-Tracking.
+#   - cosine_similarity replaced by sparse dot-product:
+#     (query_vec @ tfidf_matrix.T).toarray() → avoids dense conversion
+#     of the entire matrix, saves ~50% RAM for large dictionaries.
+#   - Result identical (TF-IDF is L2-normalized → dot = cosine).
+#   - torch.inference_mode() instead of torch.no_grad() → faster, no gradient tracking.
 #
-# [ROBUSTHEIT]
-#   - Verbesserte JSON-Extraktion mit Fallback-Strategien
-#   - Leerer Input wird abgefangen
-#   - Fehlende Felder in LLM-Output werden sauber geloggt
+# [ROBUSTNESS]
+#   - Improved JSON extraction with fallback strategies
+#   - Empty input is intercepted
+#   - Missing fields in LLM output are logged cleanly
 # ============================================================
 
 import json
@@ -38,7 +37,7 @@ import time
 # 1. AUDIT LOG INFRASTRUCTURE
 # ==========================================
 class AuditLog:
-    """Sammelt die deterministische Entscheidungskette für einen Pipeline-Run."""
+    """Collects the deterministic decision chain for a pipeline run."""
     
     def __init__(self):
         self.entries = []
@@ -65,7 +64,7 @@ class AuditLog:
                 print(f"{'':>{len(prefix)}}   {k}: {val_str}")
     
     def dump(self):
-        """Gibt den vollständigen Log als JSON-String zurück."""
+        """Returns the complete log as a JSON string."""
         return json.dumps(self.entries, indent=2, ensure_ascii=False)
 
 
@@ -75,12 +74,12 @@ audit = AuditLog()
 # 2. INPUT VALIDATION
 # ==========================================
 if "input_text" not in globals() and "input_text" not in locals():
-    print("⚠️  No input found. Using default test case.")
-    input_text = "Vulnerability in Cisco IOS XE Software allows arbitrary code execution."
+    print("No input found.") #Test: Using default test case.")
+    #input_text = "Vulnerability in Cisco IOS XE Software allows arbitrary code execution."
 
-# Leerer Input abfangen
+# Intercept empty input
 if not input_text or not input_text.strip():
-    print("❌ ERROR: input_text is empty. Skipping CPE extraction.")
+    print("ERROR: input_text is empty. Skipping CPE extraction.")
     final_cpe_results = []
 else:
     audit.step("INPUT", "Received vulnerability text", {
@@ -95,7 +94,7 @@ else:
     missing = [v for v in required_vars if v not in globals()]
     
     if missing:
-        print(f"❌ ERROR: Missing variables: {missing}. Run Setup Cell first!")
+        print(f"ERROR: Missing variables: {missing}. Run Setup Cell first!")
         final_cpe_results = []
     else:
         # ==========================================
@@ -147,12 +146,12 @@ else:
         # ==========================================
         # 5. LLM INFERENCE
         # ==========================================
-        # Begründung Paramterwahl:
-        #   do_sample=False  → Greedy Decoding = deterministisch, kein Zufall.
-        #   num_beams=1      → Kein Beam-Search (explizit dokumentiert).
-        #   max_new_tokens=512 → Genug für ~10 Komponenten in JSON.
-        #   Kein temperature/top_p → bei do_sample=False wirkungslos,
-        #     daher weggelassen um keine falsche Sicherheit zu erzeugen.
+        # Reason for parameter selection:
+        #   do_sample=False  → Greedy decoding = deterministic, no randomness.
+        #   num_beams=1      → No beam search (explicitly documented).
+        #   max_new_tokens=512 → Enough for ~10 components in JSON.
+        #   No temperature/top_p → ineffective with do_sample=False,
+        #   therefore omitted to avoid creating false security.
 
         audit.step("LLM", "Starting greedy generation (deterministic)")
 
@@ -181,17 +180,17 @@ else:
         # 6. JSON EXTRACTION
         # ==========================================
         def extract_json_from_llm(text):
-            """Extrahiert JSON aus LLM-Output mit mehreren Fallback-Strategien.
+            """Extract JSON from LLM output using multiple fallback strategies.
             
-            Strategie 1: Suche nach {"components" ... } (exakt)
-            Strategie 2: Suche nach erstem { ... letztem } (greedy)
-            Strategie 3: Reparatur häufiger LLM-JSON-Fehler
+            Strategy 1: Search for {“components” ... } (exact)
+            Strategy 2: Search for first { ... last } (greedy)
+            Strategy 3: Repair common LLM JSON errors
             """
             # Markdown-Codeblocks entfernen
             text = re.sub(r"```(?:json)?\s*", "", text)
             text = text.strip()
             
-            # Strategie 1: Gezieltes Bracket-Matching ab '{"components'
+            # Strategy 1: Targeted bracket matching from '{"components'
             start = text.find('{"components')
             if start == -1:
                 start = text.find('"components"')
@@ -239,14 +238,13 @@ else:
             GROUNDING_THRESHOLD = 0.4
 
             def find_best_cpe_match(vendor, product, threshold=GROUNDING_THRESHOLD):
-                """Sucht den besten CPE-Match via TF-IDF Cosine Similarity.
+               """Searches for the best CPE match via TF-IDF cosine similarity.
                 
-                Performance-Verbesserung gegenüber v1:
-                    sklearn cosine_similarity konvertiert die sparse TF-IDF Matrix
-                    intern zu dense → O(n*d) RAM. Stattdessen nutzen wir den
-                    sparse dot-product direkt: Bei L2-normierten Vektoren ist
-                    dot(a,b) = cosine(a,b). Die TF-IDF-Vektoren aus sklearn
-                    TfidfVectorizer sind bereits L2-normiert (default norm='l2').
+                    sklearn cosine_similarity converts the sparse TF-IDF matrix
+                    internally to dense → O(n*d) RAM. Instead, we use the
+                    sparse dot product directly: For L2-normalized vectors,
+                    dot(a,b) = cosine(a,b). The TF-IDF vectors from sklearn
+                    TfidfVectorizer are already L2-normalized (default norm=‘l2’).
                 
                 Returns:
                     (row_or_None, score, reason_str)
@@ -297,13 +295,13 @@ else:
                         comp["match_score"] = round(min(score, 1.0), 4)
                         comp["grounding_status"] = "GROUNDED"
                         
-                        audit.step("GROUNDING", f"  → ✅ {reason}")
+                        audit.step("GROUNDING", f"  → {reason}")
                     else:
                         comp["cpe23"] = "NOT_FOUND"
                         comp["match_score"] = round(score, 4)
                         comp["grounding_status"] = "REJECTED"
                         
-                        audit.step("GROUNDING", f"  → ❌ {reason}")
+                        audit.step("GROUNDING", f"  → {reason}")
                     
                     final_cpe_results.append(comp)
                     
@@ -326,11 +324,11 @@ else:
         })
 
         print("\n" + "=" * 60)
-        print("📝 CPE EXTRACTION RESULTS")
+        print("CPE EXTRACTION RESULTS")
         print("=" * 60)
         print(json.dumps(final_cpe_results, indent=2))
         
         print("\n" + "=" * 60)
-        print("🔗 DETERMINISM CHAIN (Audit Log)")
+        print("DETERMINISM CHAIN (Audit Log)")
         print("=" * 60)
         print(audit.dump())
