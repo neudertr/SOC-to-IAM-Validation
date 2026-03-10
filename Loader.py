@@ -2,15 +2,6 @@
 # ============================================================
 # Asset Mitigation Loader (CPE-only Edition)
 # ============================================================
-# Änderungen gegenüber v1:
-#   - Technique-basierte Account-Deaktivierung entfernt.
-#     Accounts, die über Sorting-Link mit betroffenen Permissions
-#     verbunden sind, bekommen jetzt immer "Deactivated=review_needed".
-#     Begründung: Ohne Technique-Erkennung fehlt die Grundlage für
-#     die automatische Eskalation zu "Deactivated=true".
-#   - Audit-Reporting verbessert: Match-Logik wird detailliert geloggt
-#   - Keine funktionale Änderung am CPE-Matching selbst
-# ============================================================
 
 import pandas as pd
 import json
@@ -72,10 +63,10 @@ def split_cpe(cpe_string: str):
 
 
 def compare_cpe_parts(remote_cpe: dict, local_cpe: dict):
-    """Smart CPE Matching mit drei Szenarien (unverändert aus v1)."""
+    """Smart CPE matching with three scenarios."""
     matched_fields = []
 
-    # 1. Vendor Check (Muss passen, außer Wildcard)
+    # 1. Vendor check (must match, except wildcard)
     r_vendor = str(remote_cpe.get("vendor", "*")).strip().lower()
     l_vendor = str(local_cpe.get("vendor", "*")).strip().lower()
 
@@ -92,7 +83,7 @@ def compare_cpe_parts(remote_cpe: dict, local_cpe: dict):
 
     product_match = False
 
-    # Szenario A: Exakter Produkt-Match
+    # Scenario A: Exact product match
     if r_product == "*" or r_product == l_product:
         product_match = True
         matched_fields.append("product_exact")
@@ -101,13 +92,13 @@ def compare_cpe_parts(remote_cpe: dict, local_cpe: dict):
                 return (False, [])
             matched_fields.append("version_exact")
 
-    # Szenario B: "Sticky Version" (LLM hat Version ins Produkt gezogen)
+    # Scenario B: “Sticky Version” (LLM has pulled version into product)
     elif l_product in r_product and l_version != "*" and l_version in r_product:
         product_match = True
         matched_fields.append("product_fuzzy_sticky")
         matched_fields.append("version_fuzzy_sticky")
 
-    # Szenario C: "Overspecific Asset" (Asset hat Version im Namen)
+    # Scenario C: “Overspecific asset” (asset has version in its name)
     elif r_product in l_product and r_version != "*" and r_version in l_product:
         product_match = True
         matched_fields.append("product_fuzzy_reverse")
@@ -172,9 +163,9 @@ def process_permissions(df: pd.DataFrame, stix_data: dict):
 
 
 def process_accounts(df: pd.DataFrame, affected_link_ids: set):
-    """Markiert Accounts, deren SortingAttribute in den betroffenen Links liegt.
+    """Mark accounts whose SortingAttribute is in the affected links.
     
-    Ohne Technique-Erkennung wird einheitlich 'review_needed' gesetzt.
+    Without technique detection, ‘review_needed’ is set uniformly.
     """
     report = []
 
@@ -199,16 +190,16 @@ def process_accounts(df: pd.DataFrame, affected_link_ids: set):
 # 4. MAIN EXECUTION
 # ==========================================
 def startLoader():
-    print("🚀 Starting Loader (CPE-only Smart Match)...")
+    print("Starting Loader (CPE-only Smart Match)...")
 
     if not os.path.exists(ACCOUNTS_CSV_PATH):
-        print(f"❌ Missing: {ACCOUNTS_CSV_PATH}")
+        print(f"Missing: {ACCOUNTS_CSV_PATH}")
         return
     if not os.path.exists(PERMISSIONS_CSV_PATH):
-        print(f"❌ Missing: {PERMISSIONS_CSV_PATH}")
+        print(f"Missing: {PERMISSIONS_CSV_PATH}")
         return
     if not os.path.exists(STIX_PATH):
-        print(f"❌ Missing: {STIX_PATH}")
+        print(f"Missing: {STIX_PATH}")
         return
 
     accounts_df = read_csv(ACCOUNTS_CSV_PATH)
@@ -217,10 +208,10 @@ def startLoader():
     with open(STIX_PATH, "r", encoding="utf-8") as f:
         stix_data = json.load(f)
 
-    print(f"📥 CTI Object loaded. Starting match...")
+    print(f"CTI Object loaded. Starting match...")
 
     permissions_df, perm_report, affected_links = process_permissions(permissions_df, stix_data)
-    print(f"🔗 Affected Sorting-IDs (Links): {affected_links}")
+    print(f"Affected Sorting-IDs (Links): {affected_links}")
 
     accounts_df, acc_report = process_accounts(accounts_df, affected_links)
 
@@ -235,7 +226,7 @@ def startLoader():
         all_reports.append("No matches found.")
 
     write_report(all_reports, OUTPUT_REPORT_PATH)
-    print(f"✅ Done. Report saved: {OUTPUT_REPORT_PATH}")
+    print(f"Done. Report saved: {OUTPUT_REPORT_PATH}")
 
 
 if __name__ == "__main__":
