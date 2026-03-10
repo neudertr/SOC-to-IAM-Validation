@@ -2,13 +2,6 @@
 # ============================================================
 # TIIR Pipeline – Environment Bootstrap (CPE-only Edition)
 # ============================================================
-# Änderungen gegenüber v1:
-#   - text2technique komplett entfernt (SBERT, MITRE Excel, Mapper)
-#   - GPU-Logik vereinfacht: Ein Modell → ein Device
-#   - run_command gibt stderr zurück statt zu schlucken (Debuggability)
-#   - Explizite Versionsangaben bei pip-Paketen (Reproduzierbarkeit)
-#   - Robustere Fehlerbehandlung mit klaren Fehlermeldungen
-# ============================================================
 
 import os
 import sys
@@ -17,7 +10,7 @@ import time
 
 # --- SAFETY CHECK ---
 if "BASE_URL" not in globals():
-    raise ValueError("❌ FEHLER: 'BASE_URL' fehlt. Bitte in der Kaggle-Zelle definieren!")
+    raise ValueError("Error: 'BASE_URL' missing. Please define in Kaggle notebook line!")
 
 
 def log(msg):
@@ -25,21 +18,21 @@ def log(msg):
 
 
 def run_command(command, task_name):
-    """Führt Shell-Befehl aus. Gibt bei Fehler stderr aus statt es zu schlucken."""
+    """Executes shell command. Outputs stderr instead of swallowing it in case of error."""
     print(f"   ⏳ {task_name}...", end=" ", flush=True)
     try:
         result = subprocess.run(
             command, shell=True,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,      # <-- v1 hatte DEVNULL → Fehler unsichtbar
+            stderr=subprocess.PIPE,      
             text=True,
         )
         if result.returncode != 0:
-            print(f"⚠️  Warning: {result.stderr.strip()[:120]}")
+            print(f"Warning: {result.stderr.strip()[:120]}")
         else:
-            print("✅ Done.")
+            print("Done.")
     except Exception as e:
-        print(f"❌ Exception: {e}")
+        print(f"Exception: {e}")
 
 
 # ==========================================
@@ -47,13 +40,13 @@ def run_command(command, task_name):
 # ==========================================
 log("STEP 1/4: Checking Environment & Libraries...")
 
-# Protobuf-Crash verhindern (Kaggle-spezifisch)
+# Preventing Protobuf crashes (Kaggle-specific)
 run_command("pip install -q -U --force-reinstall 'protobuf>=3.20.3'", "Fixing Protobuf")
 
 try:
     import bitsandbytes
     import kagglehub
-    print("   ✅ Core libraries already installed.")
+    print("   Core libraries already installed.")
 except ImportError:
     run_command(
         "pip install -q -U bitsandbytes",
@@ -87,18 +80,15 @@ from peft import PeftModel
 
 
 # ==========================================
-# 2. GPU SETUP  (vereinfacht – nur 1 Modell)
+# 2. GPU SETUP
 # ==========================================
 log("STEP 2/4: Configuring GPU...")
 
 n_gpus = torch.cuda.device_count()
-print(f"   🖥️  Found {n_gpus} GPU(s).")
+print(f"   Found {n_gpus} GPU(s).")
 
-# Begründung: Nur noch Mistral-CPE, daher reicht immer cuda:0.
-# Bei >=2 GPUs liegt die zweite brach – könnte für Batch-Inference
-# genutzt werden, ist aber für den PoC nicht nötig.
 device_cpe = "cuda:0" if n_gpus > 0 else "cpu"
-print(f"   → text2CPE device: {device_cpe}")
+print(f"   text2CPE device: {device_cpe}")
 
 
 # ==========================================
@@ -111,28 +101,26 @@ try:
 
     try:
         adapter_path = kagglehub.model_download(MODEL_HANDLE)
-        print("      ✅ Found in Model Registry.")
+        print("      Found in Model Registry.")
     except Exception:
-        print("      ⚠️  Model-Registry fehlgeschlagen – versuche Dataset-Registry...")
+        print("      Model registry failed – try dataset registry")
         adapter_path = kagglehub.dataset_download("mathismller/mistral-cpe-extractor")
 
     base_model_id = "mistralai/Mistral-7B-Instruct-v0.3"
-    print("   ⏳ Loading Base Model...")
+    print("   Loading Base Model...")
 
     # HF-Token (optional, für Gated Models)
-    hf_token = None
-    try:
-        from kaggle_secrets import UserSecretsClient
-        hf_token = UserSecretsClient().get_secret("HF_TOKEN")
-    except Exception:
-        pass
+    #hf_token = None
+    #try:
+    #    from kaggle_secrets import UserSecretsClient
+    #    hf_token = UserSecretsClient().get_secret("HF_TOKEN")
+    #except Exception:
+    #    pass
 
-    tokenizer_cpe = AutoTokenizer.from_pretrained(base_model_id, token=hf_token)
+    tokenizer_cpe = AutoTokenizer.from_pretrained(base_model_id)#, token=hf_token)
     tokenizer_cpe.pad_token = tokenizer_cpe.eos_token
 
-    # BitsAndBytesConfig für 4-bit Quantisierung
-    # (load_in_4bit als direkter Parameter ist in neueren transformers-Versionen entfernt,
-    #  torch_dtype ist zu dtype umbenannt)
+    # BitsAndBytesConfig for 4-bit Quantisierung
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.bfloat16,
@@ -147,10 +135,10 @@ try:
     )
     model_cpe = PeftModel.from_pretrained(model_cpe, adapter_path)
     model_cpe.eval()
-    print("   ✅ text2CPE Model loaded successfully.")
+    print("   text2CPE Model loaded successfully.")
 
 except Exception as e:
-    print(f"   ❌ Error loading text2CPE: {e}")
+    print(f"   Error loading text2CPE: {e}")
     raise
 
 
@@ -162,7 +150,7 @@ log("STEP 4/4: Loading RAG Knowledge Base...")
 rag_files = ["cpe_meta.parquet", "cpe_tfidf.npz", "vectorizer.pkl"]
 rag_path = os.getcwd()
 
-print(f"   ⬇️  Fetching artifacts from: {BASE_URL}")
+print(f"   Fetching artifacts from: {BASE_URL}")
 
 for file_name in rag_files:
     if not os.path.exists(file_name):
@@ -170,14 +158,14 @@ for file_name in rag_files:
         print(f"      Downloading {file_name}...", end=" ")
         try:
             subprocess.check_call(f"wget -q -O {file_name} {url}", shell=True)
-            print("✅")
+            print("Success.")
         except subprocess.CalledProcessError:
-            print("❌ Failed.")
+            print("Failed.")
             raise RuntimeError(f"Download failed for {file_name}")
     else:
-        print(f"      ✅ {file_name} already present.")
+        print(f"      {file_name} already present.")
 
-print(f"   📂 Reading RAG data from: {rag_path}")
+print(f"   Reading RAG data from: {rag_path}")
 
 try:
     df_meta = pd.read_parquet(os.path.join(rag_path, "cpe_meta.parquet"))
@@ -190,10 +178,10 @@ try:
         (c for c in ["cpe_uri", "cpe_2_3", "cpe"] if c in df_meta.columns),
         df_meta.columns[0],
     )
-    print(f"   ✅ RAG Database loaded ({len(df_meta)} entries). Target Column: '{cpe_col}'")
+    print(f"   RAG Database loaded ({len(df_meta)} entries). Target Column: '{cpe_col}'")
 
 except Exception as e:
-    print(f"   ❌ Error loading RAG artifacts: {e}")
+    print(f"   Error loading RAG artifacts: {e}")
     raise
 
 
@@ -220,6 +208,6 @@ for fname in scripts + data_files:
         url = f"{BASE_URL}{fname}"
         subprocess.run(f"wget -q -O {fname} {url}", shell=True)
     else:
-        print(f"   ✅ {fname} present.")
+        print(f"   {fname} present.")
 
-log("🎉 SYSTEM READY. Proceed to next cell.")
+log("SYSTEM READY. Proceed to next cell.")
