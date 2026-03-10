@@ -14,7 +14,7 @@ if "BASE_URL" not in globals():
 
 
 def log(msg):
-    print(f"\n[{time.strftime('%H:%M:%S')}] ℹ️  {msg}")
+    print(f"\n[{time.strftime('%H:%M:%S')}]  {msg}")
 
 
 def run_command(command, task_name):
@@ -109,15 +109,15 @@ try:
     base_model_id = "mistralai/Mistral-7B-Instruct-v0.3"
     print("   Loading Base Model...")
 
-    # HF-Token (optional, für Gated Models)
-    #hf_token = None
-    #try:
-    #    from kaggle_secrets import UserSecretsClient
-    #    hf_token = UserSecretsClient().get_secret("HF_TOKEN")
-    #except Exception:
-    #    pass
+     HF-Token (optional, für Gated Models)
+    hf_token = None
+    try:
+        from kaggle_secrets import UserSecretsClient
+        hf_token = UserSecretsClient().get_secret("HF_TOKEN")
+    except Exception:
+        pass
 
-    tokenizer_cpe = AutoTokenizer.from_pretrained(base_model_id)#, token=hf_token)
+    tokenizer_cpe = AutoTokenizer.from_pretrained(base_model_id, token=hf_token)
     tokenizer_cpe.pad_token = tokenizer_cpe.eos_token
 
     # BitsAndBytesConfig for 4-bit Quantisierung
