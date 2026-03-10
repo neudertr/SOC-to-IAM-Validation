@@ -238,17 +238,16 @@ else:
             GROUNDING_THRESHOLD = 0.4
 
             def find_best_cpe_match(vendor, product, threshold=GROUNDING_THRESHOLD):
-               """Searches for the best CPE match via TF-IDF cosine similarity.
+               #Searches for the best CPE match via TF-IDF cosine similarity.
                 
-                    sklearn cosine_similarity converts the sparse TF-IDF matrix
-                    internally to dense → O(n*d) RAM. Instead, we use the
-                    sparse dot product directly: For L2-normalized vectors,
-                    dot(a,b) = cosine(a,b). The TF-IDF vectors from sklearn
-                    TfidfVectorizer are already L2-normalized (default norm=‘l2’).
-                
-                Returns:
-                    (row_or_None, score, reason_str)
-                """
+               #     sklearn cosine_similarity converts the sparse TF-IDF matrix
+               #     internally to dense → O(n*d) RAM. Instead, we use the
+               #     sparse dot product directly: For L2-normalized vectors,
+               #     dot(a,b) = cosine(a,b). The TF-IDF vectors from sklearn
+               #     TfidfVectorizer are already L2-normalized (default norm=‘l2’).
+               # 
+               # Returns:
+               #     (row_or_None, score, reason_str)"""
                 if not vendor or not product:
                     return None, 0.0, "EMPTY_QUERY: vendor or product is empty"
                 
