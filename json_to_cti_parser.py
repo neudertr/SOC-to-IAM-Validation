@@ -2,13 +2,6 @@
 # ============================================================
 # JSON Pre-Processor: Routes JSON input to Inference or Loader
 # ============================================================
-# Änderungen gegenüber v1:
-#   - Technique-Felder aus Validierung entfernt (Pipeline ist CPE-only)
-#   - STIX-Bundle Erkennung hinzugefügt: Wenn type="bundle" mit
-#     vulnerability-Objekten, werden CPEs extrahiert und ein
-#     Loader-kompatibles CTI Object erzeugt
-#   - Klarere Fehlermeldungen
-# ============================================================
 
 import json
 import os
@@ -16,13 +9,13 @@ import sys
 
 OUTPUT_STIX_FILE = "Test_STIX.json"
 
-# Variable aus der Notebook-Zelle erwarten
+# Expect variable from notebook cell
 if "json_file_path" not in globals():
     if "input_text" in globals() and os.path.exists(input_text):
         json_file_path = input_text
     else:
-        print("❌ JSON PARSER: No file path provided.")
-        # In exec()-Kontext kein sys.exit() – bricht sonst den Kernel ab
+        print("JSON PARSER: No file path provided.")
+        # No sys.exit() in exec() context – otherwise it crashes the kernel
         json_file_path = None
 
 if json_file_path and os.path.exists(json_file_path):
@@ -36,7 +29,7 @@ if json_file_path and os.path.exists(json_file_path):
         loader_data = None
 
         # --------------------------------------------------
-        # CHECK A: Ist es schon ein fertiges CTI Object?
+        # CHECK A: Is it already a finished CTI object?
         # --------------------------------------------------
         has_cpe = "cpe" in data or "x_detected_cpes" in data
         is_cti = data.get("type") in ["CTI Object", "report"]
@@ -46,7 +39,7 @@ if json_file_path and os.path.exists(json_file_path):
             loader_data = data
 
         # --------------------------------------------------
-        # CHECK B: Ist es ein STIX Bundle mit Vulnerability-Objekten?
+        # CHECK B: Is it a STIX bundle with vulnerability objects?
         # --------------------------------------------------
         if not is_ready_for_loader and data.get("type") == "bundle":
             objects = data.get("objects", [])
@@ -54,7 +47,7 @@ if json_file_path and os.path.exists(json_file_path):
             description_parts = []
 
             for obj in objects:
-                # CPEs aus vulnerability-Objekten extrahieren
+                # Extract CPEs from vulnerability objects
                 if obj.get("type") == "vulnerability":
                     cpe_list = obj.get("x_cpe23", [])
                     for cpe_str in cpe_list:
@@ -62,7 +55,7 @@ if json_file_path and os.path.exists(json_file_path):
                     if obj.get("description"):
                         description_parts.append(obj["description"])
 
-                # Beschreibungen aus attack-pattern Objekten
+                # Descriptions from attack-pattern objects
                 if obj.get("type") == "attack-pattern" and obj.get("description"):
                     description_parts.append(obj["description"])
 
@@ -74,23 +67,23 @@ if json_file_path and os.path.exists(json_file_path):
                     "x_detected_cpes": extracted_cpes,
                     "cpe": extracted_cpes[0]["cpe23"],
                 }
-                print(f"   ✅ STIX Bundle parsed: {len(extracted_cpes)} CPE(s) extracted.")
+                print(f"   STIX Bundle parsed: {len(extracted_cpes)} CPE(s) extracted.")
 
         # --------------------------------------------------
-        # PFAD A: FERTIGES OBJEKT → Skip Inference
+        # PATH A: FINISHED OBJECT → Skip Inference
         # --------------------------------------------------
         if is_ready_for_loader and loader_data:
-            print("   ✅ Valid CTI Structure detected.")
+            print("   Valid CTI Structure detected.")
             with open(OUTPUT_STIX_FILE, "w", encoding="utf-8") as f_out:
                 json.dump(loader_data, f_out, indent=2)
-            print(f"   💾 Saved to {OUTPUT_STIX_FILE}.")
-            print("   ⏭️  Inference step will be skipped.")
+            print(f"   Saved to {OUTPUT_STIX_FILE}.")
+            print("   Inference step will be skipped.")
 
         # --------------------------------------------------
-        # PFAD B: ROHDATEN → Text extrahieren für Inference
+        # PATH B: RAW DATA → Extract text for inference
         # --------------------------------------------------
         else:
-            print("   ⚠️  No CTI structure found. Looking for extractable text...")
+            print("   No CTI structure found. Looking for extractable text...")
 
             extracted_text = ""
             potential_fields = [
@@ -98,7 +91,7 @@ if json_file_path and os.path.exists(json_file_path):
                 "full_text", "message", "details",
             ]
 
-            # 1. Felder direkt im Root
+            # 1. Fields directly in the root
             for field in potential_fields:
                 val = data.get(field)
                 if val and isinstance(val, str):
@@ -124,15 +117,15 @@ if json_file_path and os.path.exists(json_file_path):
                             extracted_text += f"{field.upper()}: {val}\n\n"
 
             if extracted_text.strip():
-                print(f"   📝 Extracted {len(extracted_text)} chars of text.")
-                print("   🔄 Passing text to Inference Engine...")
+                print(f"   Extracted {len(extracted_text)} chars of text.")
+                print("   Passing text to Inference Engine...")
                 input_text = extracted_text.strip()
 
                 if os.path.exists(OUTPUT_STIX_FILE):
                     os.remove(OUTPUT_STIX_FILE)
             else:
-                print("   ❌ No usable text fields found in JSON.")
-                print("   → Inference will run on fallback/empty input.")
+                print("   No usable text fields found in JSON.")
+                print("   Inference will run on fallback/empty input.")
 
     except Exception as e:
-        print(f"   ❌ Critical Error in JSON Parser: {e}")
+        print(f"   Critical Error in JSON Parser: {e}")
