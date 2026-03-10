@@ -19,7 +19,7 @@ def log(msg):
 
 def run_command(command, task_name):
     """Executes shell command. Outputs stderr instead of swallowing it in case of error."""
-    print(f"   ⏳ {task_name}...", end=" ", flush=True)
+    print(f"   {task_name}...", end=" ", flush=True)
     try:
         result = subprocess.run(
             command, shell=True,
