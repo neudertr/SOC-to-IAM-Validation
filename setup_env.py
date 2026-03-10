@@ -109,7 +109,7 @@ try:
     base_model_id = "mistralai/Mistral-7B-Instruct-v0.3"
     print("   Loading Base Model...")
 
-    HF-Token (optional, for Gated Models)
+    #HF-Token (optional, for Gated Models)
     hf_token = None
     try:
         from kaggle_secrets import UserSecretsClient
