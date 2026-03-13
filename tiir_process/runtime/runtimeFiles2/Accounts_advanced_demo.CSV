@@ -15,6 +15,6 @@ AccountID;EmployeeID;lastName;givenName;Team;Function;SortingAttribute;AssignedP
 3113;113;Stone; Sophie;Contracts template creation;Template Creation;N;;;;;available
 3114;114;Schreibhuber; Herbert;Sales;Secretary;O;;;;;available
 3115;115;Horex; Werner;Sales;Trainee;P;;;;;available
-4000;999;Expert;Sap;SAP Basis;Domain Expert;SAP_BASIS;2000.0;sap-basis-admins;domain-expert;4001.0;available
-4001;998;Lead;Basis;SAP Platform;Team Lead;SAP_PLATFORM_LEAD;;sap-platform-leads;team-lead;;available
-4002;997;Expert;Change;SAP Change;Domain Expert;SAP_CHANGE;;sap-change-admins;domain-expert;4001.0;unavailable
+4000;999;Hartmann; Lukas;SAP Basis;Domain Expert;SAP_BASIS;2000.0;sap-basis-admins;domain-expert;4001.0;unavailable
+4001;998;Vogt; Claudia;SAP Platform;Team Lead;SAP_PLATFORM_LEAD;;sap-platform-leads;team-lead;;available
+4002;997;Reuter; Jan;SAP Change;Domain Expert;SAP_CHANGE;;sap-change-admins;domain-expert;4001.0;unavailable
