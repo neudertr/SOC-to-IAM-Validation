@@ -54,8 +54,8 @@ audit = AuditLog(live=globals().get("PIPELINE_VERBOSE", False))
 final_cpe_results = []
 pipeline_summary = {}
 
-if not input_text or not str(input_text).strip():
-    raise RuntimeError("input_text is empty")
+if not input_payload or not str(input_payload).strip():
+    raise RuntimeError("input_payload is empty")
 
 required_vars = ["model_cpe", "tokenizer_cpe", "vectorizer", "tfidf_matrix", "df_meta", "cpe_col"]
 missing = [v for v in required_vars if v not in globals()]
@@ -63,8 +63,8 @@ if missing:
     raise RuntimeError(f"Missing variables: {missing}. Run setup cell first.")
 
 audit.step("INPUT", "Received vulnerability text", {
-    "char_count": len(input_text),
-    "first_line": str(input_text).strip().splitlines()[0][:120],
+    "char_count": len(input_payload),
+    "first_line": str(input_payload).strip().splitlines()[0][:120],
 })
 
 tokenizer_cpe.padding_side = "left"
@@ -87,7 +87,7 @@ ONE_SHOT_EXAMPLE = (
     '"versionEndExcluding": ""}]}'
 )
 
-full_prompt = SYSTEM_INSTRUCTION + "\n\n" + ONE_SHOT_EXAMPLE + "\n\nDescription:\n" + input_text.strip()
+full_prompt = SYSTEM_INSTRUCTION + "\n\n" + ONE_SHOT_EXAMPLE + "\n\nDescription:\n" + input_payload.strip()
 msgs = [{"role": "user", "content": full_prompt}]
 prompt_str = tokenizer_cpe.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
 input_device = resolve_input_device(model_cpe, globals().get("device_cpe", "cpu"))
