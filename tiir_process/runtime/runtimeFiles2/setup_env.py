@@ -21,10 +21,15 @@ if "TIIR_SYSTEM_LOG_NAME" not in globals():
     TIIR_SYSTEM_LOG_NAME = f"tiir_system_log_{TIIR_SETUP_SESSION_ID}.log"
 
 _LOG_UTIL = "tiir_process_log_utils.py"
-if not os.path.exists(_LOG_UTIL):
-    subprocess.check_call(["wget", "-q", "-O", _LOG_UTIL, f"{BASE_URL}{_LOG_UTIL}"])
+subprocess.check_call(["wget", "-q", "-O", _LOG_UTIL, f"{BASE_URL}{_LOG_UTIL}"])
+
 with open(_LOG_UTIL, "r", encoding="utf-8") as _f:
     exec(_f.read(), globals())
+
+required_symbols = ["TIIRSystemLogger", "TIIRProcessLogger", "build_run_artifact_paths"]
+missing_symbols = [s for s in required_symbols if s not in globals()]
+if missing_symbols:
+    raise RuntimeError(f"{_LOG_UTIL} loaded, but missing symbols: {missing_symbols}")
 
 tiir_system_logger = TIIRSystemLogger(os.path.join(os.getcwd(), TIIR_SYSTEM_LOG_NAME))
 tiir_system_logger.line(f"[{time.strftime('%H:%M:%S')}] SETUP SESSION START")
@@ -314,17 +319,7 @@ reviewer_runtime_files = [
     "Permissions_advanced_demo.CSV",
     "sap_demo_input.json",
 ]
-required_runtime_files = [
-    "tiir_process_log_utils.py",
-    "tiir_input_router.py",
-    "text2CPE_inference.py",
-    "orchestrator_stix.py",
-    "Loader.py",
-    "tiir_pipeline_runner.py",
-]
-missing_files = [f for f in required_runtime_files if not os.path.exists(f)]
-if missing_files:
-    raise RuntimeError(f"Missing runtime files after setup: {missing_files}")
+
 rag_path = os.getcwd()
 stage("Fetching RAG artifacts and runtime files")
 step4_start = time.time()
@@ -358,6 +353,17 @@ try:
         "base_url": BASE_URL,
     })
     done()
+    required_runtime_files = [
+        "tiir_process_log_utils.py",
+        "tiir_input_router.py",
+        "text2CPE_inference.py",
+        "orchestrator_stix.py",
+        "Loader.py",
+        "tiir_pipeline_runner.py",
+    ]
+    missing_files = [f for f in required_runtime_files if not os.path.exists(f)]
+    if missing_files:
+        raise RuntimeError(f"Missing runtime files after setup: {missing_files}")
     print(f"   RAG entries: {len(df_meta)} | target column: {cpe_col}")
     tiir_system_logger.line(f"   RAG entries: {len(df_meta)} | target column: {cpe_col}")
     if fetched_runtime:
