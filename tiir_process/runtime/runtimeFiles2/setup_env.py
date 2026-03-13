@@ -9,11 +9,11 @@ import time
 import warnings
 from contextlib import redirect_stderr, redirect_stdout
 
-GITHUB_USER = "soctoiam"
-REPO = "soc_to_iam"
-BRANCH = "main"
-SCRIPT_DIR = "tiir_process/runtime/runtimeFiles/"
-BASE_URL = f"https://raw.githubusercontent.com/{GITHUB_USER}/{REPO}/{BRANCH}/{SCRIPT_DIR}"
+#GITHUB_USER = "soctoiam"
+#REPO = "soc_to_iam"
+#BRANCH = "main"
+#SCRIPT_DIR = "tiir_process/runtime/runtimeFiles/"
+#BASE_URL = f"https://raw.githubusercontent.com/{GITHUB_USER}/{REPO}/{BRANCH}/{SCRIPT_DIR}"
 
 if "TIIR_SETUP_SESSION_ID" not in globals():
     TIIR_SETUP_SESSION_ID = time.strftime("%Y%m%d_%H%M%S")
