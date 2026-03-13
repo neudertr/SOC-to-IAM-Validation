@@ -314,6 +314,17 @@ reviewer_runtime_files = [
     "Permissions_advanced_demo.CSV",
     "sap_demo_input.json",
 ]
+required_runtime_files = [
+    "tiir_process_log_utils.py",
+    "tiir_input_router.py",
+    "text2CPE_inference.py",
+    "orchestrator_stix.py",
+    "Loader.py",
+    "tiir_pipeline_runner.py",
+]
+missing_files = [f for f in required_runtime_files if not os.path.exists(f)]
+if missing_files:
+    raise RuntimeError(f"Missing runtime files after setup: {missing_files}")
 rag_path = os.getcwd()
 stage("Fetching RAG artifacts and runtime files")
 step4_start = time.time()
