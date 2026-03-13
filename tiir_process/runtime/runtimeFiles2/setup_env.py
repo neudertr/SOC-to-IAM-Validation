@@ -97,7 +97,7 @@ class _QuietSection:
         self.redirect_out.__exit__(exc_type, exc, tb)
         return False
 
-
+print("Setting up TIIR: This may take 5-8 min.")
 log("STEP 1/4: Checking environment")
 stage("Checking and installing required libraries")
 step1_start = time.time()
@@ -363,6 +363,6 @@ except Exception as exc:
     fail(str(exc))
     raise
 
-log("SYSTEM READY")
+log("SYSTEM READY. Proceed with Cell 2.")
 tiir_system_logger.event("setup", "system_ready", {"system_log": TIIR_SYSTEM_LOG_NAME})
 SETUP_COMPLETED = True
