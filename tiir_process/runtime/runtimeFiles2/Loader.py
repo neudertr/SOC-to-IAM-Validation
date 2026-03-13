@@ -166,6 +166,8 @@ def _collect_cpe_list(stix_data: dict):
         cpe_list = [{"cpe23": stix_data.get("cpe")}]
     return [c for c in cpe_list if c.get("cpe23") and c.get("cpe23") != "NOT_FOUND"]
 
+if "x_detected_cpes" not in stix_data and "cpe" not in stix_data:
+    raise RuntimeError("STIX object contains neither x_detected_cpes nor cpe")
 
 def process_permissions(df: pd.DataFrame, stix_data: dict):
     report = []
