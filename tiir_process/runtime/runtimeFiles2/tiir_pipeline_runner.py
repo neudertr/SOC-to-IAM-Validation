@@ -155,7 +155,7 @@ def tiir_run_pipeline(input_payload=None, *, verbose=False, show_audit_json=Fals
     final_cpe_results = route_context.get("prebuilt_cpes", [])
 
     if "tiir_run_text2cpe_inference" not in globals():
-    raise RuntimeError("Inference helper not loaded: tiir_run_text2cpe_inference")
+        raise RuntimeError("Inference helper not loaded: tiir_run_text2cpe_inference")
 
     if route_context["route"] == "inference_path":
         inference_result = tiir_run_text2cpe_inference(
