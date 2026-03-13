@@ -14,6 +14,9 @@ for _path, _symbol in _REQUIRED_HELPERS:
         with open(_path, "r", encoding="utf-8") as _f:
             exec(_f.read(), globals())
 
+missing_symbols = [sym for _, sym in _REQUIRED_HELPERS if sym not in globals()]
+if missing_symbols:
+    raise RuntimeError(f"Missing helper symbols after loading: {missing_symbols}")
 
 def _render_dataframe(df, title, columns):
     print(f"\n{title}")
