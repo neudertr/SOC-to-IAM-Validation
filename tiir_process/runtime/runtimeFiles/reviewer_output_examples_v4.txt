@@ -1,0 +1,76 @@
+Example 1 — raw text without explicit CPE
+----------------------------------------
+A. INPUT
+   Input kind: raw_text
+   Source: inline_text
+   Preview: URGENT: Microsoft Windows Server 2022 Remote Code Execution (CVE-2024-30080). ...
+
+B. CPE RESOLUTION
+   Route: inference_path
+   Reason: text_without_cpe_requires_inference
+   Components: 1 | grounded: 1 | rejected: 0
+   Generation time: 7.31 s
+   [1] microsoft/windows_server_2022 -> cpe:2.3:o:microsoft:windows_server_2022:-:*:*:*:*:*:*:* | score=0.9164 | GROUNDED
+
+C. ORCHESTRATOR / CTI OBJECT
+   CTI object written: Test_STIX.json
+   Route mode: inference_path
+   Primary CPE: cpe:2.3:o:microsoft:windows_server_2022:-:*:*:*:*:*:*:*
+   Detected CPE entries: 1
+
+D. IMPACTED PERMISSIONS
+   ... table ...
+
+E. IMPACTED IDENTITIES
+   ... table ...
+
+
+Example 2 — JSON with direct CPE evidence
+-----------------------------------------
+A. INPUT
+   Input kind: json_file
+   Source: attack_json_succ.json
+   Preview: NAME: CVE-2021-44228 DESCRIPTION: Apache Log4j2 JNDI features could allow remote code execution under certain conditions ...
+
+B. CPE RESOLUTION
+   Route: direct_cpe_path
+   Reason: direct_cpe_found_in_json
+   Inference skipped. Direct CPE evidence found: 1
+   [1] cpe:2.3:a:apache:log4j:*:*:*:*:*:*:*:* | PREBUILT | source=root.objects[1].x_cpe23[0]
+
+C. ORCHESTRATOR / CTI OBJECT
+   CTI object written: Test_STIX.json
+   Route mode: direct_cpe_path
+   Primary CPE: cpe:2.3:a:apache:log4j:*:*:*:*:*:*:*:*
+   Detected CPE entries: 1
+
+D. IMPACTED PERMISSIONS
+   No permission hits
+
+E. IMPACTED IDENTITIES
+   No linked identities
+
+
+Example 3 — JSON without direct CPE but with text
+-------------------------------------------------
+A. INPUT
+   Input kind: json_file
+   Source: attack_json_fail.json
+   Preview: DESCRIPTION: This High severity Remote Code Execution (RCE) vulnerability was introduced in version 2.1.0 of Confluence Data Center ...
+
+B. CPE RESOLUTION
+   Route: inference_path
+   Reason: json_without_cpe_but_with_extractable_text
+   Components: ... inferred at runtime ...
+
+C. ORCHESTRATOR / CTI OBJECT
+   CTI object written: Test_STIX.json
+   Route mode: inference_path
+   Primary CPE: ... inferred at runtime ...
+   Detected CPE entries: ...
+
+D. IMPACTED PERMISSIONS
+   likely none in the demo CSVs
+
+E. IMPACTED IDENTITIES
+   likely none in the demo CSVs
